@@ -6,6 +6,8 @@ import { SetupForm } from '@/components/auth/setup-form'
 
 export const metadata: Metadata = { title: 'First-time Setup' }
 
+export const dynamic = 'force-dynamic'
+
 export default async function SetupPage() {
   if (await hasAnyStaff()) redirect('/sign-in')
 
