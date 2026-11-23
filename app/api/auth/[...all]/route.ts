@@ -10,9 +10,20 @@ const handlers = toNextJsHandler(auth)
 
 export const GET = handlers.GET
 
+async function postAuthHandler(request: Request) {
+  const response = await handlers.POST(request)
+  if (response.status >= 500) {
+    console.error('[sign-in] auth handler returned server error', {
+      step: 'better_auth_response',
+      code: `HTTP_${response.status}`,
+    })
+  }
+  return response
+}
+
 export async function POST(request: Request) {
   if (new URL(request.url).pathname !== '/api/auth/sign-in/email') {
-    return handlers.POST(request)
+    return postAuthHandler(request)
   }
 
   const clientIp = getTrustedClientIp(request)
@@ -31,7 +42,7 @@ export async function POST(request: Request) {
   try {
     body = await request.clone().json()
   } catch {
-    return handlers.POST(request)
+    return postAuthHandler(request)
   }
   const email =
     typeof body === 'object' &&
@@ -42,7 +53,7 @@ export async function POST(request: Request) {
       : ''
 
   try {
-    return await authenticateWithRateLimit(email, clientIp, () => handlers.POST(request))
+    return await authenticateWithRateLimit(email, clientIp, () => postAuthHandler(request))
   } catch (error) {
     if (error instanceof SignInRateLimitUnavailable) {
       console.error('[sign-in-rate-limit] unavailable', {
