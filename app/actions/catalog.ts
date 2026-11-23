@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { doctors, labPartners, orderTemplates, testCategories, tests } from '@/lib/db/schema'
 import { assertPermission } from '@/lib/staff'
 
-export type CrudState = { error?: string; success?: string; nonce?: number } | undefined
+export type CrudState = { error?: string; phoneError?: string; success?: string; nonce?: number } | undefined
 
 const text = (fd: FormData, key: string, max = 200) => {
   const v = String(fd.get(key) ?? '').trim().slice(0, max)

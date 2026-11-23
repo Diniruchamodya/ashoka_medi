@@ -7,6 +7,7 @@ import { db } from '@/lib/db'
 import { branches, staffProfiles, session } from '@/lib/db/schema'
 import { assertPermission } from '@/lib/staff'
 import { isRole } from '@/lib/permissions'
+import { validateSriLankanPhone } from '@/lib/phone-validation'
 import type { CrudState } from './catalog'
 
 async function readAssignment(fd: FormData) {
@@ -23,9 +24,12 @@ export async function createStaff(_: CrudState, fd: FormData): Promise<CrudState
   const name = String(fd.get('name') ?? '').trim()
   const email = String(fd.get('email') ?? '').trim().toLowerCase()
   const password = String(fd.get('password') ?? '')
-  const phone = String(fd.get('phone') ?? '').trim() || null
+  const phoneInput = String(fd.get('phone') ?? '')
   if (!name || !email) return { error: 'Name and email are required.' }
   if (password.length < 8) return { error: 'Password must be at least 8 characters.' }
+  const phoneError = validateSriLankanPhone(phoneInput)
+  if (phoneError) return { error: phoneError, phoneError }
+  const phone = phoneInput.trim()
   const assignment = await readAssignment(fd)
   if ('error' in assignment) return { error: assignment.error }
 
