@@ -6,7 +6,6 @@ import {
   branches,
   labPartners,
   orderItemResults,
-  orderItemSmsNotifications,
   orderItems,
   orders,
   patients,
@@ -49,7 +48,6 @@ export default async function LabQueuePage({
         status: orderItems.status,
         result: orderItems.result,
         resultData: orderItemResults.resultData,
-        smsStatus: orderItemSmsNotifications.status,
         reportConfiguration: reportTemplates.configuration,
         defaultTemplateHidden: reportTemplateVisibility.hidden,
         partnerId: orderItems.partnerId,
@@ -70,7 +68,6 @@ export default async function LabQueuePage({
       .leftJoin(reportTemplates, eq(reportTemplates.testId, orderItems.testId))
       .leftJoin(reportTemplateVisibility, eq(reportTemplateVisibility.testId, orderItems.testId))
       .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
-      .leftJoin(orderItemSmsNotifications, eq(orderItemSmsNotifications.orderItemId, orderItems.id))
       .leftJoin(labPartners, eq(labPartners.id, orderItems.partnerId))
       .where(
         and(
@@ -212,7 +209,6 @@ export default async function LabQueuePage({
                     previewAvailable={reportReady || Boolean(configuration)}
                     reportReady={reportReady}
                     smsConfigured={smsConfigured}
-                    smsStatus={item.smsStatus}
                   />
                 </ItemStatusForm>
               </li>

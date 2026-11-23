@@ -28,7 +28,7 @@ export function ItemReportActions({
   previewAvailable: boolean
   reportReady: boolean
   smsConfigured: boolean
-  smsStatus: string | null
+  smsStatus?: string | null
 }) {
   const [smsDialogOpen, setSmsDialogOpen] = useState(false)
   const [smsError, setSmsError] = useState<string | null>(null)

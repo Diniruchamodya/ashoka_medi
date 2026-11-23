@@ -74,11 +74,19 @@ export async function sendReportReadySms(itemId: number): Promise<ReportSmsActio
     return { error: 'The patient mobile number is missing or invalid.' }
   }
 
-  const [claim] = await db
-    .insert(orderItemSmsNotifications)
-    .values({ orderItemId: itemId, submittedBy: staff.user.id })
-    .onConflictDoNothing()
-    .returning({ orderItemId: orderItemSmsNotifications.orderItemId })
+  let claim: { orderItemId: number } | undefined
+  try {
+    const [createdClaim] = await db
+      .insert(orderItemSmsNotifications)
+      .values({ orderItemId: itemId, submittedBy: staff.user.id })
+      .onConflictDoNothing()
+      .returning({ orderItemId: orderItemSmsNotifications.orderItemId })
+    claim = createdClaim
+  } catch {
+    return {
+      error: 'SMS setup is incomplete. Apply the SMS notification database migration before sending.',
+    }
+  }
 
   if (!claim) {
     const [existing] = await db
