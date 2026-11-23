@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { EmptyState, PageHeader, Panel, selectClass } from '@/components/lab/page-parts'
+import { EmptyState, selectClass } from '@/components/lab/page-parts'
 import {
   Table,
   TableBody,
@@ -97,16 +97,22 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
 
   return (
     <>
-      <PageHeader
-        title="Report Templates"
-        description="Configure which columns and parameters appear on each test’s report."
-        actions={
-          <Button type="button" onClick={() => setNewTemplateOpen(true)}>
-            <Plus aria-hidden />
-            New Template
-          </Button>
-        }
-      />
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-balance">Report Templates</h1>
+          <p className="text-sm text-muted-foreground">
+            Configure which columns and parameters appear on each test’s report.
+          </p>
+        </div>
+        <Button
+          type="button"
+          className="w-full shrink-0 sm:w-auto"
+          onClick={() => setNewTemplateOpen(true)}
+        >
+          <Plus aria-hidden />
+          New Template
+        </Button>
+      </header>
       <nav aria-label="Template sections" className="flex w-fit gap-1 rounded-lg border border-border bg-muted/40 p-1">
         <Link
           href="/templates"
@@ -122,13 +128,13 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
           Report Templates
         </Link>
       </nav>
-      <Panel>
+      <>
         {!hasDefaults && (
           <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground" role="status">
             No lab-approved system defaults are configured. Tests without a custom template are shown as Unconfigured.
           </p>
         )}
-        <div className="relative">
+        <div className="relative w-full max-w-md">
           <Search
             className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden
@@ -147,24 +153,27 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
         ) : groups.length === 0 ? (
           <EmptyState>No tests match this search.</EmptyState>
         ) : (
-          <Table className="min-w-[1080px] table-fixed">
+          <Table className="min-w-[1060px] table-fixed text-xs">
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-24">Code</TableHead>
-                <TableHead className="w-[30%] min-w-[300px]">Test Name</TableHead>
-                <TableHead className="w-32">Sample</TableHead>
-                <TableHead className="w-32 text-right">Price</TableHead>
-                <TableHead className="w-24 text-right">Margin</TableHead>
-                <TableHead className="w-36">Outsource</TableHead>
-                <TableHead className="w-32">Active</TableHead>
-                <TableHead className="w-52">Actions</TableHead>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="w-[110px] px-3 py-2 text-[10px] uppercase tracking-wide">Code</TableHead>
+                <TableHead className="w-[34%] min-w-[320px] px-3 py-2 text-[10px] uppercase tracking-wide">Test Name</TableHead>
+                <TableHead className="w-[140px] px-3 py-2 text-[10px] uppercase tracking-wide">Sample</TableHead>
+                <TableHead className="w-[110px] px-3 py-2 text-right text-[10px] uppercase tracking-wide">Price</TableHead>
+                <TableHead className="w-[95px] px-3 py-2 text-right text-[10px] uppercase tracking-wide">Margin</TableHead>
+                <TableHead className="w-[125px] px-3 py-2 text-[10px] uppercase tracking-wide">Outsource</TableHead>
+                <TableHead className="w-[120px] px-3 py-2 text-[10px] uppercase tracking-wide">Active</TableHead>
+                <TableHead className="w-[220px] px-3 py-2 text-right text-[10px] uppercase tracking-wide">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {groups.map((group) => (
                 <Fragment key={group.category}>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableCell colSpan={8} className="font-semibold">{group.category}</TableCell>
+                  <TableRow className="bg-muted/20 hover:bg-muted/20">
+                    <TableCell colSpan={8} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <span className="mr-2 inline-block size-2 rounded-full bg-primary align-middle" aria-hidden />
+                      {group.category}
+                    </TableCell>
                   </TableRow>
                   {group.rows.map((row) => {
                     const hasDefault = row.defaultConfiguration !== null
@@ -181,32 +190,36 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
 
                     return (
                       <Fragment key={row.id}>
-                        <TableRow>
-                          <TableCell>
-                            <Badge variant="outline" className="font-mono text-[11px]">
+                        <TableRow className="align-middle">
+                          <TableCell className="px-3 py-2">
+                            <Badge variant="outline" className="whitespace-nowrap px-1.5 py-0 font-mono text-[10px]">
                               {row.code}
                             </Badge>
                           </TableCell>
-                          <TableCell className="min-w-[300px] whitespace-normal">
-                            <div className="flex flex-col gap-1">
-                              <span className="font-medium">{row.name}</span>
-                              {usingDefault && <Badge variant="secondary" className="w-fit">System default</Badge>}
-                              {hasCustom && <Badge variant="outline" className="w-fit">Custom</Badge>}
-                              {!hasDefault && !hasCustom && <Badge variant="ghost" className="w-fit">Unconfigured</Badge>}
+                          <TableCell className="min-w-[320px] whitespace-normal px-3 py-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="min-w-0 break-words font-medium leading-4">{row.name}</span>
+                              {usingDefault && <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">System default</Badge>}
+                              {hasCustom && <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">Custom</Badge>}
+                              {!hasDefault && !hasCustom && <Badge variant="ghost" className="shrink-0 px-1.5 py-0 text-[10px]">Unconfigured</Badge>}
                             </div>
                           </TableCell>
-                          <TableCell>{row.sampleType || '—'}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatLKR(row.price)}</TableCell>
-                          <TableCell className="text-right tabular-nums">—</TableCell>
-                          <TableCell>{row.partnerName ?? (row.partnerId ? 'Outsourced' : 'In-house')}</TableCell>
-                          <TableCell>
-                            <Badge variant={state === 'Active' ? 'secondary' : 'outline'}>{state}</Badge>
+                          <TableCell className="whitespace-normal px-3 py-2">{row.sampleType || '—'}</TableCell>
+                          <TableCell className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatLKR(row.price)}</TableCell>
+                          <TableCell className="px-3 py-2 text-right tabular-nums">—</TableCell>
+                          <TableCell className="whitespace-normal px-3 py-2">
+                            {row.partnerName ?? (row.partnerId ? 'Outsourced' : 'In-house')}
                           </TableCell>
-                          <TableCell>
-                            <div className="flex min-w-44 flex-wrap items-center gap-1">
+                          <TableCell className="px-3 py-2">
+                            <Badge variant={state === 'Active' ? 'secondary' : 'outline'} className="px-1.5 py-0 text-[10px]">
+                              {state}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="px-3 py-2">
+                            <div className="flex min-w-[200px] flex-nowrap items-center justify-end gap-1">
                               {hasCustom ? (
                                 <>
-                                  <Button type="button" variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
+                                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingTestId(row.id)}>
                                     Edit
                                   </Button>
                                   <DeleteReportTemplateButton
@@ -217,7 +230,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                                 </>
                               ) : usingDefault ? (
                                 <>
-                                  <Button type="button" variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
+                                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingTestId(row.id)}>
                                     Customise
                                   </Button>
                                   <SystemTemplateVisibilityButton testId={row.id} hidden={false} />
@@ -225,7 +238,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                               ) : hasDefault ? (
                                 <SystemTemplateVisibilityButton testId={row.id} hidden />
                               ) : (
-                                <Button type="button" variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
+                                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingTestId(row.id)}>
                                   Configure
                                 </Button>
                               )}
@@ -234,7 +247,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                         </TableRow>
                         {editingTestId === row.id && (
                           <TableRow>
-                            <TableCell colSpan={8} className="whitespace-normal">
+                            <TableCell colSpan={8} className="whitespace-normal px-3 py-3">
                               <ReportTemplateEditor
                                 key={`${row.id}-${hasCustom ? 'custom' : 'new'}`}
                                 testId={row.id}
@@ -254,7 +267,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
             </TableBody>
           </Table>
         )}
-      </Panel>
+      </>
       <Dialog open={newTemplateOpen} onOpenChange={setNewTemplateOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
@@ -466,7 +479,7 @@ function SystemTemplateVisibilityButton({ testId, hidden }: { testId: number; hi
       <form action={formAction}>
         <input type="hidden" name="testId" value={testId} />
         <input type="hidden" name="hidden" value={String(!hidden)} />
-        <Button type="submit" variant="ghost" size="sm" disabled={pending}>
+        <Button type="submit" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={pending}>
           {pending && <Loader2 className="animate-spin" aria-hidden />}
           {hidden ? 'Show' : 'Hide'}
         </Button>
@@ -507,7 +520,7 @@ function DeleteReportTemplateButton({
         }}
       >
         <input type="hidden" name="testId" value={testId} />
-        <Button type="submit" variant="ghost" size="sm" disabled={pending}>
+        <Button type="submit" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 aria-hidden />}
           Delete
         </Button>
