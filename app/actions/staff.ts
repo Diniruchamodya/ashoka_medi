@@ -1,10 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
+import { verifyPassword } from 'better-auth/crypto'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { branches, staffProfiles, session } from '@/lib/db/schema'
+import { account, branches, staffProfiles, session } from '@/lib/db/schema'
 import { assertPermission } from '@/lib/staff'
 import { isRole } from '@/lib/permissions'
 import { validateSriLankanPhone } from '@/lib/phone-validation'
@@ -32,6 +33,18 @@ export async function createStaff(_: CrudState, fd: FormData): Promise<CrudState
   const phone = phoneInput.trim()
   const assignment = await readAssignment(fd)
   if ('error' in assignment) return { error: assignment.error }
+
+  const credentials = await db
+    .select({ hash: account.password })
+    .from(account)
+    .innerJoin(staffProfiles, eq(staffProfiles.userId, account.userId))
+    .where(and(eq(account.providerId, 'credential'), isNotNull(account.password)))
+  for (const { hash } of credentials) {
+    if (hash && (await verifyPassword({ hash, password }))) {
+      const error = 'Choose a different temporary password.'
+      return { error, passwordError: error }
+    }
+  }
 
   try {
     // No nextCookies plugin is configured, so this creates the account without

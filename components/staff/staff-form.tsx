@@ -36,9 +36,11 @@ function CreateStaffForm({
   const [phone, setPhone] = useState('')
   const [phoneWasValidated, setPhoneWasValidated] = useState(false)
   const [phoneWasEdited, setPhoneWasEdited] = useState(false)
+  const [passwordWasEdited, setPasswordWasEdited] = useState(false)
   const ref = useRef<HTMLFormElement>(null)
   const localPhoneError = phoneWasValidated ? validateSriLankanPhone(phone) : undefined
   const phoneError = localPhoneError ?? (phoneWasEdited ? undefined : state?.phoneError)
+  const passwordError = passwordWasEdited ? undefined : state?.passwordError
   const uid = (key: string) => `staff-new-${key}`
 
   useEffect(() => {
@@ -47,6 +49,7 @@ function CreateStaffForm({
       setPhone('')
       setPhoneWasValidated(false)
       setPhoneWasEdited(false)
+      setPasswordWasEdited(false)
       onSuccess?.()
     }
   }, [state?.nonce, state?.success, onSuccess])
@@ -58,10 +61,11 @@ function CreateStaffForm({
       onSubmit={(event) => {
         event.preventDefault()
         setPhoneWasValidated(true)
-        setPhoneWasEdited(false)
         const error = validateSriLankanPhone(phone)
         if (error) return
 
+        setPhoneWasEdited(false)
+        setPasswordWasEdited(false)
         const formData = new FormData(event.currentTarget)
         startTransition(() => formAction(formData))
       }}
@@ -74,7 +78,22 @@ function CreateStaffForm({
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Temporary password" htmlFor={uid('password')}>
-          <Input id={uid('password')} name="password" type="password" minLength={8} required autoComplete="new-password" />
+          <Input
+            id={uid('password')}
+            name="password"
+            type="password"
+            minLength={8}
+            required
+            autoComplete="new-password"
+            onChange={() => setPasswordWasEdited(true)}
+            aria-invalid={Boolean(passwordError)}
+            aria-describedby={passwordError ? uid('password-error') : undefined}
+          />
+          {passwordError && (
+            <p id={uid('password-error')} className="text-sm text-destructive" role="alert">
+              {passwordError}
+            </p>
+          )}
         </Field>
         <Field label="Phone" htmlFor={uid('phone')}>
           <Input
@@ -105,7 +124,7 @@ function CreateStaffForm({
           {isPending && <Loader2 className="animate-spin" aria-hidden />}
           Create account
         </Button>
-        {state?.error && !state.phoneError && (
+        {state?.error && !state.phoneError && !state.passwordError && (
           <p className="text-sm text-destructive" role="alert">
             {state.error}
           </p>
