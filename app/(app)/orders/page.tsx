@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm'
 import type { Metadata } from 'next'
 import { Plus } from 'lucide-react'
 import { db } from '@/lib/db'
-import { doctors, orderItems, orders, patients } from '@/lib/db/schema'
+import { doctors, orderItemResults, orderItems, orders, patients } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/staff'
 import { can, ORDER_STATUS_LABELS } from '@/lib/permissions'
 import { colomboDate, formatDateTime, formatLKR } from '@/lib/format'
@@ -63,6 +63,33 @@ export default async function OrdersPage({
     .where(and(...conditions))
     .orderBy(desc(orders.createdAt))
     .limit(200)
+  const readyResults = rows.length === 0
+    ? []
+    : await db
+        .select({
+          orderId: orderItems.orderId,
+          itemId: orderItems.id,
+          testName: orderItems.testName,
+          legacyResult: orderItems.result,
+          resultId: orderItemResults.orderItemId,
+        })
+        .from(orderItems)
+        .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
+        .where(and(
+          inArray(orderItems.orderId, rows.map((row) => row.id)),
+          eq(orderItems.status, 'completed'),
+        ))
+  const resultsByOrder = new Map<number, typeof readyResults>()
+  for (const result of readyResults) {
+    const hasLegacyResult = Boolean(
+      result.legacyResult?.trim() &&
+      result.legacyResult.trim().toLowerCase() !== 'completed',
+    )
+    if (!result.resultId && !hasLegacyResult) continue
+    const orderResults = resultsByOrder.get(result.orderId) ?? []
+    orderResults.push(result)
+    resultsByOrder.set(result.orderId, orderResults)
+  }
 
   return (
     <>
@@ -111,6 +138,7 @@ export default async function OrdersPage({
                     <th className="px-4 py-3 font-medium">Patient</th>
                     <th className="hidden px-4 py-3 font-medium md:table-cell">Doctor</th>
                     <th className="px-4 py-3 font-medium">Tests</th>
+                    <th className="px-4 py-3 font-medium">Results</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 text-right font-medium">Total</th>
                     <th className="px-4 py-3 font-medium">Payment</th>
@@ -131,6 +159,22 @@ export default async function OrdersPage({
                       </td>
                       <td className="hidden px-4 py-3 md:table-cell">{o.doctorName ?? 'Self'}</td>
                       <td className="px-4 py-3 tabular-nums">{o.testCount}</td>
+                      <td className="px-4 py-3">
+                        {resultsByOrder.get(o.id)?.length ? (
+                          <ul className="flex flex-col gap-1">
+                            {(resultsByOrder.get(o.id) ?? []).map((result) => (
+                              <li key={result.itemId}>
+                                <a
+                                  href={`/api/orders/items/${result.itemId}/result`}
+                                  className="font-medium text-primary hover:underline"
+                                >
+                                  Download Result (PDF) · {result.testName}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : '—'}
+                      </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={o.status} />
                       </td>

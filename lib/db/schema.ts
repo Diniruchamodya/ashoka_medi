@@ -252,6 +252,23 @@ export const orderItems = pgTable('order_items', {
   completedAt: timestamp('completedAt'),
 })
 
+export type OrderedTestResult = {
+  columns: string[]
+  parameters: {
+    name: string
+    value: string
+    unit: string
+    referenceInterval: string
+  }[]
+}
+
+export const orderItemResults = pgTable('order_item_results', {
+  orderItemId: integer('orderItemId').primaryKey().references(() => orderItems.id, { onDelete: 'cascade' }),
+  resultData: jsonb('resultData').$type<OrderedTestResult>().notNull(),
+  updatedBy: text('updatedBy'),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
 export const payments = pgTable('payments', {
   id: serial('id').primaryKey(),
   orderId: integer('orderId').notNull(),

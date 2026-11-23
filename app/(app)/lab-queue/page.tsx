@@ -2,11 +2,24 @@ import Link from 'next/link'
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { Metadata } from 'next'
 import { db } from '@/lib/db'
-import { labPartners, orderItems, orders, patients } from '@/lib/db/schema'
+import {
+  branches,
+  labPartners,
+  orderItemResults,
+  orderItems,
+  orders,
+  patients,
+  reportTemplates,
+  reportTemplateVisibility,
+  tests,
+} from '@/lib/db/schema'
 import { requirePermission } from '@/lib/staff'
 import { formatDateTime } from '@/lib/format'
 import { ITEM_STATUS_LABELS } from '@/lib/permissions'
+import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
+import { buttonVariants } from '@/components/ui/button'
 import { EmptyState, PageHeader, StatusBadge } from '@/components/lab/page-parts'
+import { ItemResultForm } from '@/components/orders/item-result-form'
 import { ItemStatusForm } from '@/components/orders/item-status-form'
 import { cn } from '@/lib/utils'
 
@@ -31,8 +44,12 @@ export default async function LabQueuePage({
       .select({
         id: orderItems.id,
         testName: orderItems.testName,
+        testCode: tests.code,
         status: orderItems.status,
         result: orderItems.result,
+        resultData: orderItemResults.resultData,
+        reportConfiguration: reportTemplates.configuration,
+        defaultTemplateHidden: reportTemplateVisibility.hidden,
         partnerId: orderItems.partnerId,
         partnerName: labPartners.name,
         orderId: orders.id,
@@ -40,10 +57,17 @@ export default async function LabQueuePage({
         createdAt: orders.createdAt,
         patientName: patients.fullName,
         patientCode: patients.patientCode,
+        patientPhone: patients.phone,
+        branchName: branches.name,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
       .innerJoin(patients, eq(patients.id, orders.patientId))
+      .innerJoin(branches, eq(branches.id, orders.branchId))
+      .leftJoin(tests, eq(tests.id, orderItems.testId))
+      .leftJoin(reportTemplates, eq(reportTemplates.testId, orderItems.testId))
+      .leftJoin(reportTemplateVisibility, eq(reportTemplateVisibility.testId, orderItems.testId))
+      .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
       .leftJoin(labPartners, eq(labPartners.id, orderItems.partnerId))
       .where(
         and(
@@ -112,23 +136,51 @@ export default async function LabQueuePage({
           {items.map((item) => (
             <li
               key={item.id}
-              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center"
+              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4"
             >
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex min-w-0 flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">{item.testName}</span>
                   <StatusBadge status={item.status} />
                   {item.partnerName && (
                     <span className="text-xs text-muted-foreground">via {item.partnerName}</span>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {item.patientName} ({item.patientCode}) ·{' '}
-                  <Link href={`/orders/${item.orderId}`} className="font-medium text-primary hover:underline">
-                    {item.orderNumber}
-                  </Link>{' '}
-                  · {formatDateTime(item.createdAt)}
-                </p>
+                <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Order No</dt>
+                    <dd>
+                      <Link href={`/orders/${item.orderId}`} className="font-medium text-primary hover:underline">
+                        {item.orderNumber}
+                      </Link>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Patient</dt>
+                    <dd className="font-medium">{item.patientName} ({item.patientCode})</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Phone</dt>
+                    <dd>{item.patientPhone ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Branch</dt>
+                    <dd>{item.branchName}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Test</dt>
+                    <dd className="font-medium">
+                      {item.testName}{item.testCode ? ` (${item.testCode})` : ''}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Labels</dt>
+                    <dd>—</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Ordered</dt>
+                    <dd>{formatDateTime(item.createdAt)}</dd>
+                  </div>
+                </dl>
               </div>
               <ItemStatusForm
                 itemId={item.id}
@@ -136,7 +188,32 @@ export default async function LabQueuePage({
                 result={item.result}
                 partnerId={item.partnerId}
                 partners={partners}
-              />
+              >
+                {['sample_collected', 'processing'].includes(item.status) && (
+                  <ItemResultForm
+                    itemId={item.id}
+                    testName={item.testName}
+                    configuration={
+                      item.reportConfiguration ??
+                      (!item.defaultTemplateHidden
+                        ? SYSTEM_REPORT_TEMPLATES[item.testCode ?? ''] ?? null
+                        : null)
+                    }
+                    savedResult={item.resultData}
+                  />
+                )}
+                {(item.resultData ||
+                  (item.status === 'completed' &&
+                    item.result?.trim() &&
+                    item.result.trim().toLowerCase() !== 'completed')) && (
+                    <a
+                      href={`/api/orders/items/${item.id}/result`}
+                      className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                    >
+                      Download Result (PDF)
+                    </a>
+                  )}
+              </ItemStatusForm>
             </li>
           ))}
         </ul>
