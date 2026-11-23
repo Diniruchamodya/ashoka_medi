@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, arrayContains, eq, isNotNull, or } from 'drizzle-orm'
 import { verifyPassword } from 'better-auth/crypto'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -14,9 +14,23 @@ import type { CrudState } from './catalog'
 async function readAssignment(fd: FormData) {
   const role = String(fd.get('role') ?? '')
   if (!isRole(role)) return { error: 'Choose a valid role.' } as const
-  const valid = new Set((await db.select({ id: branches.id }).from(branches)).map((b) => b.id))
-  const branchIds = [...new Set(fd.getAll('branchIds').map(Number))].filter((id) => valid.has(id))
-  if (role !== 'admin' && branchIds.length === 0) return { error: 'Assign at least one branch.' } as const
+  const rows = await db.select({ id: branches.id }).from(branches)
+  const valid = new Set(rows.map((branch) => branch.id))
+  const requested = fd.getAll('branchIds').map((value) => {
+    if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return null
+    const id = Number(value)
+    return Number.isSafeInteger(id) ? id : null
+  })
+  if (requested.some((id) => id === null || !valid.has(id))) {
+    const error = 'Select valid branches.'
+    return { error, branchError: error } as const
+  }
+  const branchIds = [...new Set(requested.filter((id): id is number => id !== null))]
+  if (role === 'admin') return { role, branchIds: rows.map((branch) => branch.id) } as const
+  if (branchIds.length === 0) {
+    const error = 'Assign at least one branch.'
+    return { error, branchError: 'Select at least one branch.' } as const
+  }
   return { role, branchIds } as const
 }
 

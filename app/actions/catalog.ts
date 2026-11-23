@@ -7,7 +7,14 @@ import { doctors, labPartners, orderTemplates, testCategories, tests } from '@/l
 import { assertPermission } from '@/lib/staff'
 
 export type CrudState =
-  | { error?: string; phoneError?: string; passwordError?: string; success?: string; nonce?: number }
+  | {
+      error?: string
+      phoneError?: string
+      passwordError?: string
+      branchError?: string
+      success?: string
+      nonce?: number
+    }
   | undefined
 
 const text = (fd: FormData, key: string, max = 200) => {

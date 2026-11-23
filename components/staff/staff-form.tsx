@@ -118,13 +118,18 @@ function CreateStaffForm({
           )}
         </Field>
       </div>
-      <StaffAccessFields branches={branches} idPrefix="staff-new" />
+      <StaffAccessFields
+        key={state?.nonce ?? 'new'}
+        branches={branches}
+        idPrefix="staff-new"
+        branchError={state?.branchError}
+      />
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={isPending}>
           {isPending && <Loader2 className="animate-spin" aria-hidden />}
           Create account
         </Button>
-        {state?.error && !state.phoneError && !state.passwordError && (
+        {state?.error && !state.phoneError && !state.passwordError && !state.branchError && (
           <p className="text-sm text-destructive" role="alert">
             {state.error}
           </p>
@@ -174,16 +179,27 @@ function StaffAccessFields({
   role,
   branchIds = [],
   idPrefix,
+  branchError,
 }: {
   branches: { id: number; name: string }[]
   role?: string
   branchIds?: number[]
   idPrefix: string
+  branchError?: string
 }) {
+  const [selectedRole, setSelectedRole] = useState(role ?? 'receptionist')
+  const [selectedBranchIds, setSelectedBranchIds] = useState(branchIds)
+
   return (
     <>
       <Field label="Role" htmlFor={`${idPrefix}-role`}>
-        <select id={`${idPrefix}-role`} name="role" defaultValue={role ?? 'receptionist'} className={selectClass}>
+        <select
+          id={`${idPrefix}-role`}
+          name="role"
+          value={selectedRole}
+          onChange={(event) => setSelectedRole(event.target.value)}
+          className={selectClass}
+        >
           {ROLES.map((r) => (
             <option key={r} value={r}>
               {ROLE_LABELS[r]}
@@ -191,24 +207,53 @@ function StaffAccessFields({
           ))}
         </select>
       </Field>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1.5 text-sm font-medium">Branch access</legend>
-        <div className="grid grid-cols-2 gap-2">
-          {branches.map((b) => (
-            <label key={b.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                name="branchIds"
-                value={b.id}
-                defaultChecked={branchIds.includes(b.id)}
-                className="size-4 accent-[var(--primary)]"
-              />
-              {b.name}
-            </label>
-          ))}
+      {selectedRole === 'admin' ? (
+        <div>
+          <p className="text-sm text-muted-foreground">All branches</p>
+          {branchError && (
+            <p className="text-sm text-destructive" role="alert">
+              {branchError}
+            </p>
+          )}
         </div>
-        <p className="text-xs text-muted-foreground">Administrators can access every branch.</p>
-      </fieldset>
+      ) : (
+        <fieldset className="flex flex-col gap-2" aria-invalid={Boolean(branchError)}>
+          <legend className="mb-1.5 text-sm font-medium">Branch access</legend>
+          {branches.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No branches are available. Add a branch first.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {branches.map((branch) => (
+                <label key={branch.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="branchIds"
+                    value={branch.id}
+                    checked={selectedBranchIds.includes(branch.id)}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked
+                      setSelectedBranchIds((current) =>
+                        checked
+                          ? [...current, branch.id]
+                          : current.filter((id) => id !== branch.id),
+                      )
+                    }}
+                    className="size-4 accent-[var(--primary)]"
+                  />
+                  {branch.name}
+                </label>
+              ))}
+            </div>
+          )}
+          {branchError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {branchError}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Select at least one branch.</p>
+          )}
+        </fieldset>
+      )}
     </>
   )
 }

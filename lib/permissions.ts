@@ -20,6 +20,7 @@ export type Permission =
   | 'partners'
   | 'patients'
   | 'staff'
+  | 'branches.manage'
   | 'branches.switch'
 
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -35,6 +36,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'partners',
     'patients',
     'staff',
+    'branches.manage',
     'branches.switch',
   ],
   manager: [
@@ -82,6 +84,7 @@ export const NAV_ITEMS: { href: string; label: string; permission: Permission }[
   { href: '/partners', label: 'Lab Partners', permission: 'partners' },
   { href: '/patients', label: 'Patients', permission: 'patients' },
   { href: '/staff', label: 'Staff', permission: 'staff' },
+  { href: '/branches', label: 'Branches', permission: 'branches.manage' },
 ]
 
 export const ITEM_STATUSES = [
