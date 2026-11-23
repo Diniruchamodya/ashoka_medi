@@ -6,9 +6,10 @@ import { rateLimitPool } from '@/lib/db'
 type RateLimitClient = PoolClient
 
 const MAX_FAILURES = 5
-const WINDOW_MINUTES = 15
+const FAILURE_WINDOW_MINUTES = 5
+const COOLDOWN_MINUTES = 5
 const TOO_MANY_PREFIX = 'Too many sign-in attempts. Please try again in '
-const FIRST_LIMIT_MESSAGE = `${TOO_MANY_PREFIX}15 minutes`
+const FIRST_LIMIT_MESSAGE = `${TOO_MANY_PREFIX}${COOLDOWN_MINUTES} minutes`
 
 export class SignInRateLimitUnavailable extends Error {
   constructor() {
@@ -81,28 +82,28 @@ async function incrementFailure(
      VALUES ($1, $2, 1, statement_timestamp(), statement_timestamp())
      ON CONFLICT ("scope", "keyHash") DO UPDATE SET
        "failureCount" = CASE
-         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - interval '15 minutes'
+         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4 * interval '1 minute')
            OR sign_in_rate_limits."lockedUntil" <= statement_timestamp()
          THEN 1
          ELSE sign_in_rate_limits."failureCount" + 1
        END,
        "windowStartedAt" = CASE
-         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - interval '15 minutes'
+         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4 * interval '1 minute')
            OR sign_in_rate_limits."lockedUntil" <= statement_timestamp()
          THEN statement_timestamp()
          ELSE sign_in_rate_limits."windowStartedAt"
        END,
        "lockedUntil" = CASE
-         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - interval '15 minutes'
+         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4 * interval '1 minute')
            OR sign_in_rate_limits."lockedUntil" <= statement_timestamp()
          THEN NULL
          WHEN sign_in_rate_limits."failureCount" + 1 >= $3
-         THEN statement_timestamp() + interval '15 minutes'
+         THEN statement_timestamp() + ($5 * interval '1 minute')
          ELSE NULL
        END,
        "updatedAt" = statement_timestamp()
      RETURNING "failureCount", "lockedUntil"`,
-    [scope, keyHash, MAX_FAILURES],
+    [scope, keyHash, MAX_FAILURES, FAILURE_WINDOW_MINUTES, COOLDOWN_MINUTES],
   )
   const row = result.rows[0]
   if (!row) throw new Error('Sign-in rate-limit counter update returned no row.')
@@ -218,7 +219,7 @@ export async function authenticateWithRateLimit(
         const limitReached = await recordFailure(client, pairHash, ipHash)
         await client.query('COMMIT')
         transactionOpen = false
-        return limitReached ? rateLimitResponse(WINDOW_MINUTES * 60_000, true) : response
+        return limitReached ? rateLimitResponse(COOLDOWN_MINUTES * 60_000, true) : response
       }
       if (response.ok) await clearFailures(client, pairHash)
       await client.query('COMMIT')
