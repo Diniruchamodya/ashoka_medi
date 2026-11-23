@@ -269,6 +269,14 @@ export const orderItemResults = pgTable('order_item_results', {
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
+export const orderItemSmsNotifications = pgTable('order_item_sms_notifications', {
+  orderItemId: integer('orderItemId').primaryKey().references(() => orderItems.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('pending'),
+  submittedBy: text('submittedBy').notNull(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  submittedAt: timestamp('submittedAt'),
+})
+
 export const payments = pgTable('payments', {
   id: serial('id').primaryKey(),
   orderId: integer('orderId').notNull(),

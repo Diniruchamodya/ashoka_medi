@@ -19,6 +19,7 @@ import {
 } from '@/lib/db/schema'
 import { formatDateTime } from '@/lib/format'
 import { can } from '@/lib/permissions'
+import { hasLegacyReportResult, hasStructuredReportResult } from '@/lib/order-result-readiness'
 import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
 import { getStaffContext } from '@/lib/staff'
 
@@ -242,10 +243,9 @@ export async function GET(
   }
 
   const legacyValue = item.legacyResult?.trim()
-  const hasLegacyResult =
-    item.itemStatus === 'completed' &&
-    Boolean(legacyValue && legacyValue.toLowerCase() !== 'completed')
-  const hasSavedResult = Boolean(item.resultData || hasLegacyResult)
+  const structuredResult = hasStructuredReportResult(item.resultData) ? item.resultData : null
+  const hasLegacyResult = hasLegacyReportResult(item.itemStatus, legacyValue)
+  const hasSavedResult = structuredResult || hasLegacyResult
   const configuration =
     item.reportConfiguration ??
     (!item.defaultTemplateHidden
@@ -257,8 +257,9 @@ export async function GET(
   }
 
   const blankTemplate = !hasSavedResult
-  const resultData: OrderedTestResult = item.resultData ?? (
-    hasLegacyResult
+  const resultData: OrderedTestResult = structuredResult
+    ? structuredResult
+    : hasLegacyResult
       ? {
           columns: ['parameter', 'result'],
           parameters: [{
@@ -275,7 +276,6 @@ export async function GET(
             value: '',
           })) ?? [],
         }
-  )
   const pdfBytes = await createResultPdf({
     orderNumber: item.orderNumber,
     patientName: item.patientName,

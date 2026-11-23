@@ -23,3 +23,11 @@ export function validateSriLankanPhone(value: string): string | undefined {
 
   return 'Enter a valid Sri Lankan mobile, landline, or +94 phone number.'
 }
+
+export function normalizeSriLankanMobileForSms(value: string): string | undefined {
+  const compact = value.trim().replace(/[ ()-]/g, '')
+  if (/^07\d{8}$/.test(compact)) return `94${compact.slice(1)}`
+  if (/^\+947\d{8}$/.test(compact)) return compact.slice(1)
+  if (/^947\d{8}$/.test(compact)) return compact
+  return undefined
+}

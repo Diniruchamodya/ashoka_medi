@@ -6,6 +6,7 @@ import {
   branches,
   labPartners,
   orderItemResults,
+  orderItemSmsNotifications,
   orderItems,
   orders,
   patients,
@@ -17,6 +18,7 @@ import { requirePermission } from '@/lib/staff'
 import { formatDateTime } from '@/lib/format'
 import { ITEM_STATUS_LABELS } from '@/lib/permissions'
 import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
+import { hasReadyReport } from '@/lib/order-result-readiness'
 import { EmptyState, PageHeader, StatusBadge } from '@/components/lab/page-parts'
 import { ItemReportActions } from '@/components/orders/item-report-actions'
 import { ItemStatusForm } from '@/components/orders/item-status-form'
@@ -47,6 +49,7 @@ export default async function LabQueuePage({
         status: orderItems.status,
         result: orderItems.result,
         resultData: orderItemResults.resultData,
+        smsStatus: orderItemSmsNotifications.status,
         reportConfiguration: reportTemplates.configuration,
         defaultTemplateHidden: reportTemplateVisibility.hidden,
         partnerId: orderItems.partnerId,
@@ -67,6 +70,7 @@ export default async function LabQueuePage({
       .leftJoin(reportTemplates, eq(reportTemplates.testId, orderItems.testId))
       .leftJoin(reportTemplateVisibility, eq(reportTemplateVisibility.testId, orderItems.testId))
       .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
+      .leftJoin(orderItemSmsNotifications, eq(orderItemSmsNotifications.orderItemId, orderItems.id))
       .leftJoin(labPartners, eq(labPartners.id, orderItems.partnerId))
       .where(
         and(
@@ -98,6 +102,11 @@ export default async function LabQueuePage({
 
   const countMap = new Map(counts.map((c) => [c.status, c.count]))
   const activeTotal = counts.reduce((s, c) => s + c.count, 0)
+  const smsConfigured = Boolean(
+    process.env.NOTIFYLK_USER_ID?.trim() &&
+      process.env.NOTIFYLK_API_KEY?.trim() &&
+      process.env.NOTIFYLK_SENDER_ID?.trim(),
+  )
 
   return (
     <>
@@ -138,10 +147,7 @@ export default async function LabQueuePage({
               (!item.defaultTemplateHidden
                 ? SYSTEM_REPORT_TEMPLATES[item.testCode ?? ''] ?? null
                 : null)
-            const hasLegacyResult =
-              item.status === 'completed' &&
-              Boolean(item.result?.trim() && item.result.trim().toLowerCase() !== 'completed')
-            const reportReady = Boolean(item.resultData || hasLegacyResult)
+            const reportReady = hasReadyReport(item.status, item.result, item.resultData)
 
             return (
               <li
@@ -205,6 +211,8 @@ export default async function LabQueuePage({
                     patientPhone={item.patientPhone}
                     previewAvailable={reportReady || Boolean(configuration)}
                     reportReady={reportReady}
+                    smsConfigured={smsConfigured}
+                    smsStatus={item.smsStatus}
                   />
                 </ItemStatusForm>
               </li>

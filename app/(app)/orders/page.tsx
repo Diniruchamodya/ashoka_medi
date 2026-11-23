@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { EmptyState, PageHeader, StatusBadge, paymentStatus, selectClass } from '@/components/lab/page-parts'
 import { cn } from '@/lib/utils'
 import { LiveSearch, LiveSearchInput, LiveSearchResults } from '@/components/search/live-search'
+import { hasReadyReport } from '@/lib/order-result-readiness'
 
 export const metadata: Metadata = { title: 'All Orders' }
 
@@ -71,7 +72,7 @@ export default async function OrdersPage({
           itemId: orderItems.id,
           testName: orderItems.testName,
           legacyResult: orderItems.result,
-          resultId: orderItemResults.orderItemId,
+          resultData: orderItemResults.resultData,
         })
         .from(orderItems)
         .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
@@ -81,11 +82,7 @@ export default async function OrdersPage({
         ))
   const resultsByOrder = new Map<number, typeof readyResults>()
   for (const result of readyResults) {
-    const hasLegacyResult = Boolean(
-      result.legacyResult?.trim() &&
-      result.legacyResult.trim().toLowerCase() !== 'completed',
-    )
-    if (!result.resultId && !hasLegacyResult) continue
+    if (!hasReadyReport('completed', result.legacyResult, result.resultData)) continue
     const orderResults = resultsByOrder.get(result.orderId) ?? []
     orderResults.push(result)
     resultsByOrder.set(result.orderId, orderResults)
