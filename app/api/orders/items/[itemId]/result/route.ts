@@ -8,6 +8,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   branches,
+  labPartners,
   orderItemResults,
   orderItems,
   orders,
@@ -104,8 +105,10 @@ function wrapText(
 async function createResultPdf({
   orderNumber,
   patientName,
+  patientCode,
   patientPhone,
   branchName,
+  partnerLabName,
   testName,
   testCode,
   orderedAt,
@@ -115,8 +118,10 @@ async function createResultPdf({
 }: {
   orderNumber: string
   patientName: string
+  patientCode: string
   patientPhone: string | null
   branchName: string
+  partnerLabName: string | null
   testName: string
   testCode: string | null
   orderedAt: Date
@@ -170,9 +175,11 @@ async function createResultPdf({
   addText('TEST RESULT', 12, true, 12)
   addText(`Order No: ${orderNumber}`)
   addText(`Patient: ${patientName}`)
+  addText(`Patient ID: ${patientCode}`)
   addText(`Phone: ${patientPhone || '—'}`)
   addText(`Branch: ${branchName}`)
   addText(`Test: ${testName}${testCode ? ` (${testCode})` : ''}`)
+  if (partnerLabName) addText(`Partner lab: ${partnerLabName}`)
   addText(`Ordered: ${formatDateTime(orderedAt)}`)
   if (blankTemplate) {
     addText('Blank template — results not entered.', 10, true, 12)
@@ -183,8 +190,8 @@ async function createResultPdf({
 
   const columns = new Set(resultData.columns)
   for (const parameter of resultData.parameters) {
-    addText(parameter.name, 10, true, 3)
-    addText(`Result: ${parameter.value || '—'}`, 10, false, 3)
+    if (columns.has('parameter')) addText(parameter.name, 10, true, 3)
+    if (columns.has('result')) addText(`Result: ${parameter.value}`, 10, false, 3)
     if (columns.has('unit') && parameter.unit) addText(`Unit: ${parameter.unit}`, 9, false, 3)
     if (columns.has('referenceInterval') && parameter.referenceInterval) {
       addText(`Reference interval: ${parameter.referenceInterval}`, 9, false, 8)
@@ -213,8 +220,11 @@ export async function GET(
       orderNumber: orders.orderNumber,
       orderedAt: orders.createdAt,
       patientName: patients.fullName,
+      patientCode: patients.patientCode,
       patientPhone: patients.phone,
       branchName: branches.name,
+      partnerId: orderItems.partnerId,
+      partnerLabName: labPartners.name,
       testName: orderItems.testName,
       testCode: tests.code,
       itemStatus: orderItems.status,
@@ -229,6 +239,7 @@ export async function GET(
     .innerJoin(patients, eq(patients.id, orders.patientId))
     .innerJoin(branches, eq(branches.id, orders.branchId))
     .leftJoin(tests, eq(tests.id, orderItems.testId))
+    .leftJoin(labPartners, eq(labPartners.id, orderItems.partnerId))
     .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
     .leftJoin(reportTemplates, eq(reportTemplates.testId, orderItems.testId))
     .leftJoin(reportTemplateVisibility, eq(reportTemplateVisibility.testId, orderItems.testId))
@@ -257,8 +268,19 @@ export async function GET(
   }
 
   const blankTemplate = !hasSavedResult
-  const resultData: OrderedTestResult = structuredResult
-    ? structuredResult
+  const savedValues = new Map(
+    (structuredResult?.parameters ?? []).map((parameter) => [parameter.name.trim().toLowerCase(), parameter.value]),
+  )
+  const resultData: OrderedTestResult = structuredResult && configuration
+    ? {
+        columns: configuration.columns,
+        parameters: configuration.parameters.map((parameter) => ({
+          ...parameter,
+          value: savedValues.get(parameter.name.trim().toLowerCase()) ?? '',
+        })),
+      }
+    : structuredResult
+      ? structuredResult
     : hasLegacyResult
       ? {
           columns: ['parameter', 'result'],
@@ -279,8 +301,10 @@ export async function GET(
   const pdfBytes = await createResultPdf({
     orderNumber: item.orderNumber,
     patientName: item.patientName,
+    patientCode: item.patientCode,
     patientPhone: item.patientPhone,
     branchName: item.branchName,
+    partnerLabName: item.partnerId ? item.partnerLabName ?? 'Outsourced' : null,
     testName: item.testName,
     testCode: item.testCode,
     orderedAt: item.orderedAt,
