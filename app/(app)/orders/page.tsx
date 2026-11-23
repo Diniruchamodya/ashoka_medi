@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { and, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm'
 import type { Metadata } from 'next'
-import { Plus } from 'lucide-react'
+import { Download, Plus } from 'lucide-react'
 import { db } from '@/lib/db'
 import { doctors, orderItemResults, orderItems, orders, patients } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/staff'
@@ -166,9 +166,12 @@ export default async function OrdersPage({
                               <li key={result.itemId}>
                                 <a
                                   href={`/api/orders/items/${result.itemId}/result`}
-                                  className="font-medium text-primary hover:underline"
+                                  className={buttonVariants({ variant: 'outline', size: 'icon-sm' })}
+                                  aria-label={`Download result PDF for ${result.testName}`}
+                                  title={`Download result PDF for ${result.testName}`}
                                 >
-                                  Download Result (PDF) · {result.testName}
+                                  <Download aria-hidden />
+                                  <span className="sr-only">Download result PDF for {result.testName}</span>
                                 </a>
                               </li>
                             ))}

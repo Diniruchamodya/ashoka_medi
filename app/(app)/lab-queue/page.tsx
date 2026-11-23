@@ -17,9 +17,8 @@ import { requirePermission } from '@/lib/staff'
 import { formatDateTime } from '@/lib/format'
 import { ITEM_STATUS_LABELS } from '@/lib/permissions'
 import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
-import { buttonVariants } from '@/components/ui/button'
 import { EmptyState, PageHeader, StatusBadge } from '@/components/lab/page-parts'
-import { ItemResultForm } from '@/components/orders/item-result-form'
+import { ItemReportActions } from '@/components/orders/item-report-actions'
 import { ItemStatusForm } from '@/components/orders/item-status-form'
 import { cn } from '@/lib/utils'
 
@@ -133,89 +132,84 @@ export default async function LabQueuePage({
         <EmptyState>Nothing in the queue. All caught up.</EmptyState>
       ) : (
         <ul className="flex flex-col gap-3">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4"
-            >
-              <div className="flex min-w-0 flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={item.status} />
-                  {item.partnerName && (
-                    <span className="text-xs text-muted-foreground">via {item.partnerName}</span>
-                  )}
-                </div>
-                <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Order No</dt>
-                    <dd>
-                      <Link href={`/orders/${item.orderId}`} className="font-medium text-primary hover:underline">
-                        {item.orderNumber}
-                      </Link>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Patient</dt>
-                    <dd className="font-medium">{item.patientName} ({item.patientCode})</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Phone</dt>
-                    <dd>{item.patientPhone ?? '—'}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Branch</dt>
-                    <dd>{item.branchName}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Test</dt>
-                    <dd className="font-medium">
-                      {item.testName}{item.testCode ? ` (${item.testCode})` : ''}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Labels</dt>
-                    <dd>—</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Ordered</dt>
-                    <dd>{formatDateTime(item.createdAt)}</dd>
-                  </div>
-                </dl>
-              </div>
-              <ItemStatusForm
-                itemId={item.id}
-                status={item.status}
-                result={item.result}
-                partnerId={item.partnerId}
-                partners={partners}
+          {items.map((item) => {
+            const configuration =
+              item.reportConfiguration ??
+              (!item.defaultTemplateHidden
+                ? SYSTEM_REPORT_TEMPLATES[item.testCode ?? ''] ?? null
+                : null)
+            const hasLegacyResult =
+              item.status === 'completed' &&
+              Boolean(item.result?.trim() && item.result.trim().toLowerCase() !== 'completed')
+            const reportReady = Boolean(item.resultData || hasLegacyResult)
+
+            return (
+              <li
+                key={item.id}
+                className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4"
               >
-                {['sample_collected', 'processing'].includes(item.status) && (
-                  <ItemResultForm
+                <div className="flex min-w-0 flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={item.status} />
+                    {item.partnerName && (
+                      <span className="text-xs text-muted-foreground">via {item.partnerName}</span>
+                    )}
+                  </div>
+                  <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Order No</dt>
+                      <dd>
+                        <Link href={`/orders/${item.orderId}`} className="font-medium text-primary hover:underline">
+                          {item.orderNumber}
+                        </Link>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Patient</dt>
+                      <dd className="font-medium">{item.patientName} ({item.patientCode})</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Phone</dt>
+                      <dd>{item.patientPhone ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Branch</dt>
+                      <dd>{item.branchName}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Test</dt>
+                      <dd className="font-medium">
+                        {item.testName}{item.testCode ? ` (${item.testCode})` : ''}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Labels</dt>
+                      <dd>—</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Ordered</dt>
+                      <dd>{formatDateTime(item.createdAt)}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <ItemStatusForm
+                  itemId={item.id}
+                  status={item.status}
+                  result={item.result}
+                  partnerId={item.partnerId}
+                  partners={partners}
+                >
+                  <ItemReportActions
                     itemId={item.id}
                     testName={item.testName}
-                    configuration={
-                      item.reportConfiguration ??
-                      (!item.defaultTemplateHidden
-                        ? SYSTEM_REPORT_TEMPLATES[item.testCode ?? ''] ?? null
-                        : null)
-                    }
-                    savedResult={item.resultData}
+                    patientPhone={item.patientPhone}
+                    previewAvailable={reportReady || Boolean(configuration)}
+                    reportReady={reportReady}
                   />
-                )}
-                {(item.resultData ||
-                  (item.status === 'completed' &&
-                    item.result?.trim() &&
-                    item.result.trim().toLowerCase() !== 'completed')) && (
-                    <a
-                      href={`/api/orders/items/${item.id}/result`}
-                      className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                    >
-                      Download Result (PDF)
-                    </a>
-                  )}
-              </ItemStatusForm>
-            </li>
-          ))}
+                </ItemStatusForm>
+              </li>
+            )
+          })}
         </ul>
       )}
     </>

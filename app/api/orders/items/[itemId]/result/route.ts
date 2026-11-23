@@ -12,11 +12,14 @@ import {
   orderItems,
   orders,
   patients,
+  reportTemplateVisibility,
+  reportTemplates,
   tests,
   type OrderedTestResult,
 } from '@/lib/db/schema'
 import { formatDateTime } from '@/lib/format'
 import { can } from '@/lib/permissions'
+import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
 import { getStaffContext } from '@/lib/staff'
 
 export const runtime = 'nodejs'
@@ -107,6 +110,7 @@ async function createResultPdf({
   orderedAt,
   resultData,
   resultSavedAt,
+  blankTemplate,
 }: {
   orderNumber: string
   patientName: string
@@ -116,7 +120,8 @@ async function createResultPdf({
   testCode: string | null
   orderedAt: Date
   resultData: OrderedTestResult
-  resultSavedAt: Date
+  resultSavedAt: Date | null
+  blankTemplate: boolean
 }) {
   const pdf = await PDFDocument.create()
   pdf.registerFontkit(fontkit)
@@ -168,13 +173,17 @@ async function createResultPdf({
   addText(`Branch: ${branchName}`)
   addText(`Test: ${testName}${testCode ? ` (${testCode})` : ''}`)
   addText(`Ordered: ${formatDateTime(orderedAt)}`)
-  addText(`Result saved: ${formatDateTime(resultSavedAt)}`, 9, false, 12)
+  if (blankTemplate) {
+    addText('Blank template — results not entered.', 10, true, 12)
+  } else if (resultSavedAt) {
+    addText(`Result saved: ${formatDateTime(resultSavedAt)}`, 9, false, 12)
+  }
   addText('Results', 11, true, 8)
 
   const columns = new Set(resultData.columns)
   for (const parameter of resultData.parameters) {
     addText(parameter.name, 10, true, 3)
-    addText(`Result: ${parameter.value}`, 10, false, 3)
+    addText(`Result: ${parameter.value || '—'}`, 10, false, 3)
     if (columns.has('unit') && parameter.unit) addText(`Unit: ${parameter.unit}`, 9, false, 3)
     if (columns.has('referenceInterval') && parameter.referenceInterval) {
       addText(`Reference interval: ${parameter.referenceInterval}`, 9, false, 8)
@@ -185,7 +194,7 @@ async function createResultPdf({
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ itemId: string }> },
 ) {
   const staff = await getStaffContext()
@@ -211,6 +220,8 @@ export async function GET(
       legacyResult: orderItems.result,
       resultData: orderItemResults.resultData,
       resultSavedAt: orderItemResults.updatedAt,
+      reportConfiguration: reportTemplates.configuration,
+      defaultTemplateHidden: reportTemplateVisibility.hidden,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
@@ -218,33 +229,53 @@ export async function GET(
     .innerJoin(branches, eq(branches.id, orders.branchId))
     .leftJoin(tests, eq(tests.id, orderItems.testId))
     .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
+    .leftJoin(reportTemplates, eq(reportTemplates.testId, orderItems.testId))
+    .leftJoin(reportTemplateVisibility, eq(reportTemplateVisibility.testId, orderItems.testId))
     .where(and(
       eq(orderItems.id, itemId),
       inArray(orders.branchId, staff.branches.map((branch) => branch.id)),
     ))
     .limit(1)
 
-  if (!item || (item.itemStatus !== 'completed' && !item.resultData)) {
+  if (!item) {
     return new Response('Not found', { status: 404 })
   }
 
   const legacyValue = item.legacyResult?.trim()
-  if (
-    !item.resultData &&
-    (item.itemStatus !== 'completed' || !legacyValue || legacyValue.toLowerCase() === 'completed')
-  ) {
-    return new Response('Result is not ready.', { status: 409 })
+  const hasLegacyResult =
+    item.itemStatus === 'completed' &&
+    Boolean(legacyValue && legacyValue.toLowerCase() !== 'completed')
+  const hasSavedResult = Boolean(item.resultData || hasLegacyResult)
+  const configuration =
+    item.reportConfiguration ??
+    (!item.defaultTemplateHidden
+      ? SYSTEM_REPORT_TEMPLATES[item.testCode ?? ''] ?? null
+      : null)
+
+  if (!hasSavedResult && !configuration) {
+    return new Response('PDF not available yet.', { status: 404 })
   }
 
-  const resultData: OrderedTestResult = item.resultData ?? {
-    columns: ['parameter', 'result'],
-    parameters: [{
-      name: 'Result',
-      value: legacyValue!,
-      unit: '',
-      referenceInterval: '',
-    }],
-  }
+  const blankTemplate = !hasSavedResult
+  const resultData: OrderedTestResult = item.resultData ?? (
+    hasLegacyResult
+      ? {
+          columns: ['parameter', 'result'],
+          parameters: [{
+            name: 'Result',
+            value: legacyValue!,
+            unit: '',
+            referenceInterval: '',
+          }],
+        }
+      : {
+          columns: configuration?.columns ?? ['parameter', 'result', 'unit', 'referenceInterval'],
+          parameters: configuration?.parameters.map((parameter) => ({
+            ...parameter,
+            value: '',
+          })) ?? [],
+        }
+  )
   const pdfBytes = await createResultPdf({
     orderNumber: item.orderNumber,
     patientName: item.patientName,
@@ -254,14 +285,16 @@ export async function GET(
     testCode: item.testCode,
     orderedAt: item.orderedAt,
     resultData,
-    resultSavedAt: item.resultSavedAt ?? item.orderedAt,
+    resultSavedAt: item.resultSavedAt,
+    blankTemplate,
   })
   const fileOrderNumber = item.orderNumber.replace(/[^A-Za-z0-9._-]/g, '_')
+  const inline = new URL(request.url).searchParams.get('disposition') === 'inline'
 
   return new Response(Buffer.from(pdfBytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="result-${fileOrderNumber}-${itemId}.pdf"`,
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="result-${fileOrderNumber}-${itemId}.pdf"`,
       'Cache-Control': 'private, no-store',
     },
   })
