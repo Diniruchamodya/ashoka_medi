@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 
 export function SignInForm({ notice }: { notice?: string }) {
   const router = useRouter()
+  const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -19,11 +20,17 @@ export function SignInForm({ notice }: { notice?: string }) {
     setPending(true)
     setError(null)
     const { error } = await authClient.signIn.email({
-      email: String(form.get('email')),
+      email,
       password: String(form.get('password')),
     })
     if (error) {
-      setError('Invalid email or password.')
+      const isRateLimited = error.status === 429 && error.code === 'TOO_MANY_REQUESTS'
+      const isUnavailable = error.status === 503 && error.code === 'SERVICE_UNAVAILABLE'
+      setError(
+        isRateLimited || isUnavailable
+          ? error.message ?? 'Sign-in is temporarily unavailable.'
+          : 'Invalid email or password.',
+      )
       setPending(false)
       return
     }
@@ -40,7 +47,16 @@ export function SignInForm({ notice }: { notice?: string }) {
       )}
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" autoComplete="email" required className="h-10" />
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          className="h-10"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">Password</Label>

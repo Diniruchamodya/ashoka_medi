@@ -2,10 +2,12 @@ import { sql, type SQLWrapper } from 'drizzle-orm'
 import {
   boolean,
   date,
+  index,
   integer,
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -206,6 +208,18 @@ export const reportTemplateVisibility = pgTable('report_template_visibility', {
   hidden: boolean('hidden').notNull().default(false),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
+
+export const signInRateLimits = pgTable('sign_in_rate_limits', {
+  scope: text('scope').notNull(),
+  keyHash: text('keyHash').notNull(),
+  failureCount: integer('failureCount').notNull(),
+  windowStartedAt: timestamp('windowStartedAt', { withTimezone: true }).notNull().defaultNow(),
+  lockedUntil: timestamp('lockedUntil', { withTimezone: true }),
+  updatedAt: timestamp('updatedAt', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.scope, table.keyHash] }),
+  index('sign_in_rate_limits_updated_idx').on(table.updatedAt),
+])
 
 export const orders = pgTable('orders', {
   id: serial('id').primaryKey(),
