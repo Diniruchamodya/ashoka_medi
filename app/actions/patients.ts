@@ -6,13 +6,15 @@ import { db } from '@/lib/db'
 import { orderItems, orders, patients, payments } from '@/lib/db/schema'
 import { getStaffContext } from '@/lib/staff'
 import { can } from '@/lib/permissions'
+import { normalizeEmail, normalizeName, normalizePhone, validateOptionalEmail, validateOptionalPhone } from '@/lib/form-validation'
 
 export type PatientState =
   | {
       error?: string
       success?: string
-      fieldErrors?: { fullName?: string }
+      fieldErrors?: { fullName?: string; phone?: string; email?: string }
       nonce?: number
+      duplicateQuery?: string
       patient?: { id: number; patientCode: string; fullName: string; phone: string | null }
     }
   | undefined
@@ -46,24 +48,45 @@ function readPatient(formData: FormData) {
   }
 }
 
-function normalizePatientName(name: string) {
-  return name.replace(/\s+/g, ' ').trim().toLowerCase()
+function normalizedPhoneColumn() {
+  const compact = sql`regexp_replace(coalesce(${patients.phone}, ''), '[-[:space:]()]', '', 'g')`
+  return sql`CASE WHEN ${compact} ~ '^[+]94[0-9]{9}$' THEN '0' || substring(${compact} from 4) ELSE ${compact} END`
 }
 
-async function patientNameExists(name: string, excludedId?: number) {
-  const normalizedColumn = sql`lower(btrim(regexp_replace(${patients.fullName}, '[[:space:]]+', ' ', 'g')))`
-  const sameName = sql`${normalizedColumn} = lower(${name})`
+async function patientContactExists(
+  field: 'fullName' | 'phone' | 'email',
+  value: string,
+  excludedId?: number,
+) {
+  const column = patients[field]
+  const normalizedColumn =
+    field === 'fullName'
+      ? sql`lower(btrim(regexp_replace(${column}, '[[:space:]]+', ' ', 'g')))`
+      : field === 'phone'
+        ? normalizedPhoneColumn()
+        : sql`lower(btrim(${column}))`
+  const normalizedValue =
+    field === 'fullName' ? normalizeName(value) : field === 'phone' ? normalizePhone(value) : normalizeEmail(value)
+  const sameValue = sql`${normalizedColumn} = ${normalizedValue}`
   const where = excludedId
-    ? and(sameName, ne(patients.id, excludedId))
-    : sameName
+    ? and(sameValue, ne(patients.id, excludedId))
+    : sameValue
   const [existing] = await db.select({ id: patients.id }).from(patients).where(where).limit(1)
   return Boolean(existing)
 }
 
-function duplicateNameState(): PatientState {
+function duplicatePatientState(field: 'fullName' | 'phone' | 'email', duplicateQuery: string): PatientState {
+  const message =
+    field === 'fullName'
+      ? 'A patient with this name is already registered.'
+      : field === 'phone'
+        ? 'A patient with this phone number is already registered.'
+        : 'A patient with this email is already registered.'
   return {
-    error: 'A patient with this name is already registered.',
-    fieldErrors: { fullName: 'A patient with this name is already registered.' },
+    error: message,
+    fieldErrors: { [field]: message },
+    duplicateQuery,
+    nonce: Date.now(),
   }
 }
 
@@ -81,6 +104,22 @@ function databaseCode(error: unknown) {
   return ''
 }
 
+function databaseConstraint(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return ''
+  if ('constraint' in error && typeof error.constraint === 'string') return error.constraint
+  if ('cause' in error) return databaseConstraint(error.cause)
+  return ''
+}
+
+function patientDuplicateField(error: unknown): 'fullName' | 'phone' | 'email' | undefined {
+  const constraints: Record<string, 'fullName' | 'phone' | 'email'> = {
+    patients_full_name_normalized_unique: 'fullName',
+    patients_phone_normalized_unique: 'phone',
+    patients_email_normalized_unique: 'email',
+  }
+  return constraints[databaseConstraint(error)]
+}
+
 export async function createPatient(_: PatientState, formData: FormData): Promise<PatientState> {
   const ctx = await assertPatientAccess()
   const data = readPatient(formData)
@@ -88,14 +127,32 @@ export async function createPatient(_: PatientState, formData: FormData): Promis
     return {
       error: 'Check the highlighted field.',
       fieldErrors: { fullName: 'Patient name is required.' },
+      nonce: Date.now(),
+    }
+  }
+
+  const phoneError = validateOptionalPhone(data.phone ?? '')
+  const emailError = validateOptionalEmail(data.email ?? '')
+  if (phoneError || emailError) {
+    return {
+      error: 'Check the highlighted fields.',
+      fieldErrors: { phone: phoneError, email: emailError },
+      nonce: Date.now(),
     }
   }
 
   try {
-    if (await patientNameExists(data.fullName)) return duplicateNameState()
+    const [duplicateName, duplicatePhone, duplicateEmail] = await Promise.all([
+      patientContactExists('fullName', data.fullName),
+      data.phone ? patientContactExists('phone', data.phone) : false,
+      data.email ? patientContactExists('email', data.email) : false,
+    ])
+    if (duplicateName) return duplicatePatientState('fullName', data.fullName)
+    if (duplicatePhone) return duplicatePatientState('phone', data.phone ?? '')
+    if (duplicateEmail) return duplicatePatientState('email', data.email ?? '')
   } catch (error) {
-    console.error('[patients] duplicate-name check failed', error)
-    return { error: 'Could not validate the patient name. Please try again.' }
+    console.error('[patients] duplicate-contact check failed', error)
+    return { error: 'Could not validate patient details. Please try again.', nonce: Date.now() }
   }
 
   let created: { id: number }
@@ -115,9 +172,14 @@ export async function createPatient(_: PatientState, formData: FormData): Promis
     patientCode = `P${String(created.id).padStart(6, '0')}`
     await db.update(patients).set({ patientCode }).where(eq(patients.id, created.id))
   } catch (error) {
-    if (databaseCode(error) === '23505') return duplicateNameState()
+    const duplicateField = patientDuplicateField(error)
+    if (duplicateField) {
+      const value =
+        duplicateField === 'fullName' ? data.fullName : duplicateField === 'phone' ? data.phone : data.email
+      return duplicatePatientState(duplicateField, value ?? '')
+    }
     console.error('[patients] create failed', error)
-    return { error: 'Could not register patient. Please try again.' }
+    return { error: 'Could not register patient. Please try again.', nonce: Date.now() }
   }
 
   revalidatePath('/patients')
@@ -141,20 +203,33 @@ export async function updatePatient(_: PatientState, formData: FormData): Promis
   }
   try {
     const [existing] = await db
-      .select({ fullName: patients.fullName })
+      .select({ fullName: patients.fullName, phone: patients.phone, email: patients.email })
       .from(patients)
       .where(eq(patients.id, id))
       .limit(1)
-    if (!existing) return { error: 'Patient not found.' }
+    if (!existing) return { error: 'Patient not found.', nonce: Date.now() }
 
-    if (normalizePatientName(existing.fullName) !== normalizePatientName(data.fullName)) {
-      try {
-        if (await patientNameExists(data.fullName, id)) return duplicateNameState()
-      } catch (error) {
-        console.error('[patients] duplicate-name check failed', error)
-        return { error: 'Could not validate the patient name. Please try again.' }
+    const nameChanged = normalizeName(existing.fullName) !== normalizeName(data.fullName)
+    const phoneChanged = normalizePhone(existing.phone ?? '') !== normalizePhone(data.phone ?? '')
+    const emailChanged = normalizeEmail(existing.email ?? '') !== normalizeEmail(data.email ?? '')
+    const phoneError = validateOptionalPhone(data.phone ?? '')
+    const emailError = validateOptionalEmail(data.email ?? '')
+    if (phoneError || emailError) {
+      return {
+        error: 'Check the highlighted fields.',
+        fieldErrors: { phone: phoneError, email: emailError },
+        nonce: Date.now(),
       }
     }
+
+    const [duplicateName, duplicatePhone, duplicateEmail] = await Promise.all([
+      nameChanged ? patientContactExists('fullName', data.fullName, id) : false,
+      data.phone && phoneChanged ? patientContactExists('phone', data.phone, id) : false,
+      data.email && emailChanged ? patientContactExists('email', data.email, id) : false,
+    ])
+    if (duplicateName) return duplicatePatientState('fullName', data.fullName)
+    if (duplicatePhone) return duplicatePatientState('phone', data.phone ?? '')
+    if (duplicateEmail) return duplicatePatientState('email', data.email ?? '')
 
     const updated = await db
       .update(patients)
@@ -163,7 +238,12 @@ export async function updatePatient(_: PatientState, formData: FormData): Promis
       .returning({ id: patients.id })
     if (updated.length === 0) return { error: 'Patient not found.' }
   } catch (error) {
-    if (databaseCode(error) === '23505') return duplicateNameState()
+    const duplicateField = patientDuplicateField(error)
+    if (duplicateField) {
+      const value =
+        duplicateField === 'fullName' ? data.fullName : duplicateField === 'phone' ? data.phone : data.email
+      return duplicatePatientState(duplicateField, value ?? '')
+    }
     console.error('[patients] update failed', error)
     return { error: 'Could not save patient details. Please try again.' }
   }

@@ -6,6 +6,7 @@ import { createPatient } from '@/app/actions/patients'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, selectClass } from '@/components/lab/page-parts'
+import { validateOptionalEmail, validateOptionalPhone } from '@/lib/form-validation'
 
 type Created = { id: number; patientCode: string; fullName: string; phone: string | null }
 
@@ -21,11 +22,15 @@ export function PatientFields({
   values,
   onValueChange,
   fullNameError,
+  phoneError,
+  emailError,
   idPrefix = 'patient',
 }: {
   values: PatientFieldValues
   onValueChange?: (key: keyof PatientFieldValues, value: string) => void
   fullNameError?: string
+  phoneError?: string
+  emailError?: string
   idPrefix?: string
 }) {
   const id = (field: string) => `${idPrefix}-${field}`
@@ -68,8 +73,15 @@ export function PatientFields({
           type="tel"
           value={values.phone}
           onChange={(event) => onValueChange?.('phone', event.target.value)}
+          aria-invalid={Boolean(phoneError)}
+          aria-describedby={phoneError ? id('phone-error') : undefined}
           placeholder="07X XXX XXXX"
         />
+        {phoneError && (
+          <p id={id('phone-error')} className="text-sm text-destructive" role="alert">
+            {phoneError}
+          </p>
+        )}
       </Field>
       <Field label="Email" htmlFor={id('email')}>
         <Input
@@ -78,7 +90,14 @@ export function PatientFields({
           type="email"
           value={values.email}
           onChange={(event) => onValueChange?.('email', event.target.value)}
+          aria-invalid={Boolean(emailError)}
+          aria-describedby={emailError ? id('email-error') : undefined}
         />
+        {emailError && (
+          <p id={id('email-error')} className="text-sm text-destructive" role="alert">
+            {emailError}
+          </p>
+        )}
       </Field>
       <Field label="Address" htmlFor={id('address')}>
         <Input
@@ -92,7 +111,13 @@ export function PatientFields({
   )
 }
 
-export function PatientQuickForm({ onCreated }: { onCreated?: (p: Created) => void }) {
+export function PatientQuickForm({
+  onCreated,
+  onDuplicate,
+}: {
+  onCreated?: (p: Created) => void
+  onDuplicate?: (query: string) => void
+}) {
   const [state, action, pending] = useActionState(createPatient, undefined)
   const [values, setValues] = useState<PatientFieldValues>({
     fullName: '',
@@ -102,28 +127,55 @@ export function PatientQuickForm({ onCreated }: { onCreated?: (p: Created) => vo
     address: '',
   })
   const [nameWasEdited, setNameWasEdited] = useState(false)
+  const [phoneWasEdited, setPhoneWasEdited] = useState(false)
+  const [emailWasEdited, setEmailWasEdited] = useState(false)
 
   useEffect(() => {
     if (!state?.nonce) return
-    setValues({ fullName: '', gender: '', phone: '', email: '', address: '' })
-    if (state.patient) onCreated?.(state.patient)
-  }, [state?.nonce, onCreated])
+    setNameWasEdited(false)
+    setPhoneWasEdited(false)
+    setEmailWasEdited(false)
+    if (state.success) {
+      setValues({ fullName: '', gender: '', phone: '', email: '', address: '' })
+      if (state.patient) onCreated?.(state.patient)
+    }
+    if (state.duplicateQuery) onDuplicate?.(state.duplicateQuery)
+  }, [state?.nonce, state?.success, state?.patient, state?.duplicateQuery, onCreated, onDuplicate])
 
   return (
     <form
       action={action}
       className="flex flex-col gap-4"
-      onSubmit={() => setNameWasEdited(false)}
+      onSubmit={(event) => {
+        setNameWasEdited(true)
+        setPhoneWasEdited(true)
+        setEmailWasEdited(true)
+        if (
+          !values.fullName.trim() ||
+          validateOptionalPhone(values.phone) ||
+          validateOptionalEmail(values.email)
+        ) {
+          event.preventDefault()
+        }
+      }}
     >
       <PatientFields
         values={values}
         onValueChange={(key, value) => {
           setValues((current) => ({ ...current, [key]: value }))
           if (key === 'fullName') setNameWasEdited(true)
+          if (key === 'phone') setPhoneWasEdited(true)
+          if (key === 'email') setEmailWasEdited(true)
         }}
-        fullNameError={nameWasEdited ? undefined : state?.fieldErrors?.fullName}
+        fullNameError={
+          nameWasEdited
+            ? values.fullName.trim() ? undefined : 'Patient name is required.'
+            : state?.fieldErrors?.fullName
+        }
+        phoneError={phoneWasEdited ? validateOptionalPhone(values.phone) : state?.fieldErrors?.phone}
+        emailError={emailWasEdited ? validateOptionalEmail(values.email) : state?.fieldErrors?.email}
       />
-      {state?.error && !state.fieldErrors?.fullName && (
+      {state?.error && !state.fieldErrors?.fullName && !state.fieldErrors?.phone && !state.fieldErrors?.email && (
         <p className="text-sm text-destructive" role="alert">
           {state.error}
         </p>

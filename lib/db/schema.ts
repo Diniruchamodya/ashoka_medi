@@ -1,13 +1,29 @@
+import { sql, type SQLWrapper } from 'drizzle-orm'
 import {
   boolean,
   date,
   integer,
+  jsonb,
   numeric,
   pgTable,
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
+
+function normalizedName(column: SQLWrapper) {
+  return sql`lower(btrim(regexp_replace(${column}, '[[:space:]]+', ' ', 'g')))`
+}
+
+function normalizedPhone(column: SQLWrapper) {
+  const compact = sql`regexp_replace(coalesce(${column}, ''), '[-[:space:]()]', '', 'g')`
+  return sql`CASE WHEN ${compact} ~ '^[+]94[0-9]{9}$' THEN '0' || substring(${compact} from 4) ELSE ${compact} END`
+}
+
+function normalizedEmail(column: SQLWrapper) {
+  return sql`lower(btrim(${column}))`
+}
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -94,7 +110,15 @@ export const labPartners = pgTable('lab_partners', {
   address: text('address'),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
-})
+}, (table) => [
+  uniqueIndex('lab_partners_name_normalized_unique').on(normalizedName(table.name)),
+  uniqueIndex('lab_partners_phone_normalized_unique')
+    .on(normalizedPhone(table.phone))
+    .where(sql`nullif(btrim(${table.phone}), '') IS NOT NULL`),
+  uniqueIndex('lab_partners_email_normalized_unique')
+    .on(normalizedEmail(table.email))
+    .where(sql`nullif(btrim(${table.email}), '') IS NOT NULL`),
+])
 
 export const tests = pgTable('tests', {
   id: serial('id').primaryKey(),
@@ -103,6 +127,7 @@ export const tests = pgTable('tests', {
   name: text('name').notNull(),
   price: numeric('price', { precision: 10, scale: 2 }).notNull().default('0'),
   sampleType: text('sampleType'),
+  aliases: text('aliases').array().notNull().default([]),
   turnaroundHours: integer('turnaroundHours').notNull().default(24),
   partnerId: integer('partnerId'),
   active: boolean('active').notNull().default(true),
@@ -117,7 +142,15 @@ export const doctors = pgTable('doctors', {
   phone: text('phone'),
   email: text('email'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
-})
+}, (table) => [
+  uniqueIndex('doctors_name_normalized_unique').on(normalizedName(table.name)),
+  uniqueIndex('doctors_phone_normalized_unique')
+    .on(normalizedPhone(table.phone))
+    .where(sql`nullif(btrim(${table.phone}), '') IS NOT NULL`),
+  uniqueIndex('doctors_email_normalized_unique')
+    .on(normalizedEmail(table.email))
+    .where(sql`nullif(btrim(${table.email}), '') IS NOT NULL`),
+])
 
 export const patients = pgTable('patients', {
   id: serial('id').primaryKey(),
@@ -131,7 +164,15 @@ export const patients = pgTable('patients', {
   address: text('address'),
   branchId: integer('branchId'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
-})
+}, (table) => [
+  uniqueIndex('patients_full_name_normalized_unique').on(normalizedName(table.fullName)),
+  uniqueIndex('patients_phone_normalized_unique')
+    .on(normalizedPhone(table.phone))
+    .where(sql`nullif(btrim(${table.phone}), '') IS NOT NULL`),
+  uniqueIndex('patients_email_normalized_unique')
+    .on(normalizedEmail(table.email))
+    .where(sql`nullif(btrim(${table.email}), '') IS NOT NULL`),
+])
 
 export const orderTemplates = pgTable('order_templates', {
   id: serial('id').primaryKey(),
@@ -139,6 +180,31 @@ export const orderTemplates = pgTable('order_templates', {
   description: text('description'),
   testIds: integer('testIds').array().notNull().default([]),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+export type ReportTemplateParameter = {
+  name: string
+  unit: string
+  referenceInterval: string
+}
+
+export type ReportTemplateConfiguration = {
+  parameters: ReportTemplateParameter[]
+  columns: string[]
+}
+
+export const reportTemplates = pgTable('report_templates', {
+  id: serial('id').primaryKey(),
+  testId: integer('testId').notNull().unique().references(() => tests.id, { onDelete: 'cascade' }),
+  configuration: jsonb('configuration').$type<ReportTemplateConfiguration>().notNull(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const reportTemplateVisibility = pgTable('report_template_visibility', {
+  testId: integer('testId').primaryKey().references(() => tests.id, { onDelete: 'cascade' }),
+  hidden: boolean('hidden').notNull().default(false),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
 export const orders = pgTable('orders', {

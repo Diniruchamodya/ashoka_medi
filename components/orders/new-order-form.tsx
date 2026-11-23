@@ -39,6 +39,7 @@ export function NewOrderForm({
   const [searching, startSearch] = useTransition()
   const searchRequestId = useRef(0)
   const [showNewPatient, setShowNewPatient] = useState(false)
+  const [duplicatePatientMessage, setDuplicatePatientMessage] = useState('')
 
   const [selected, setSelected] = useState<number[]>([])
   const [testQuery, setTestQuery] = useState('')
@@ -49,6 +50,7 @@ export function NewOrderForm({
   const [method, setMethod] = useState<string>('cash')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({})
   const [submitting, startSubmit] = useTransition()
 
   const testById = useMemo(() => new Map(tests.map((t) => [t.id, t])), [tests])
@@ -85,35 +87,47 @@ export function NewOrderForm({
 
   function toggleTest(id: number) {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+    setFieldErrors((current) => ({ ...current, testIds: undefined, partnerId: undefined }))
   }
 
   function updatePatientQuery(value: string) {
     if (value !== query) {
       searchRequestId.current += 1
       setHits([])
+      setDuplicatePatientMessage('')
+      setFieldErrors((current) => ({ ...current, patientId: undefined }))
     }
     setQuery(value)
   }
 
   function applyTemplate(testIds: number[]) {
     setSelected((prev) => [...new Set([...prev, ...testIds.filter((id) => testById.has(id))])])
+    setFieldErrors((current) => ({ ...current, testIds: undefined, partnerId: undefined }))
   }
 
   function submit() {
     setError(null)
-    if (!patient) return setError('Select or register a patient first.')
-    if (selected.length === 0) return setError('Choose at least one test.')
+    setFieldErrors({})
+    if (!patient) {
+      setFieldErrors({ patientId: 'Select or register a patient first.' })
+      return
+    }
+    if (selected.length === 0) {
+      setFieldErrors({ testIds: 'Choose at least one test.' })
+      return
+    }
     startSubmit(async () => {
       const result = await createOrder({
         patientId: patient.id,
         doctorId: doctorId ? Number(doctorId) : null,
         testIds: selected,
-        discount: discountValue,
-        paymentAmount: Math.min(Number(payment) || 0, total),
+        discount: discount.trim() ? Number(discount) : 0,
+        paymentAmount: payment.trim() ? Number(payment) : 0,
         paymentMethod: method,
         notes,
       })
-      if (result?.error) setError(result.error)
+      if (result?.fieldErrors) setFieldErrors(result.fieldErrors)
+      if (result?.error && (!result.fieldErrors || result.fieldErrors.branchId)) setError(result.error)
     })
   }
 
@@ -147,10 +161,19 @@ export function NewOrderForm({
               onCreated={(p) => {
                 setPatient(p)
                 setShowNewPatient(false)
+                setFieldErrors((current) => ({ ...current, patientId: undefined }))
+              }}
+              onDuplicate={(search) => {
+                updatePatientQuery(search)
+                setShowNewPatient(false)
+                setDuplicatePatientMessage('This patient is already registered. Select the matching patient from the search results.')
               }}
             />
           ) : (
             <div className="flex flex-col gap-3">
+              {duplicatePatientMessage && (
+                <p className="text-sm text-muted-foreground" role="status">{duplicatePatientMessage}</p>
+              )}
               <div className="relative">
                 <Search
                   className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
@@ -174,7 +197,11 @@ export function NewOrderForm({
                     <li key={h.id}>
                       <button
                         type="button"
-                        onClick={() => setPatient(h)}
+                        onClick={() => {
+                          setPatient(h)
+                          setDuplicatePatientMessage('')
+                          setFieldErrors((current) => ({ ...current, patientId: undefined }))
+                        }}
                         className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
                       >
                         <span className="font-medium">{h.fullName}</span>
@@ -199,6 +226,9 @@ export function NewOrderForm({
                 </p>
               )}
             </div>
+          )}
+          {fieldErrors.patientId && (
+            <p className="text-sm text-destructive" role="alert">{fieldErrors.patientId}</p>
           )}
         </Panel>
 
@@ -272,6 +302,8 @@ export function NewOrderForm({
               )
             })}
           </ul>
+          {fieldErrors.testIds && <p className="text-sm text-destructive" role="alert">{fieldErrors.testIds}</p>}
+          {fieldErrors.partnerId && <p className="text-sm text-destructive" role="alert">{fieldErrors.partnerId}</p>}
         </Panel>
       </div>
 
@@ -281,7 +313,10 @@ export function NewOrderForm({
             <select
               id="doctor"
               value={doctorId}
-              onChange={(e) => setDoctorId(e.target.value)}
+              onChange={(e) => {
+                setDoctorId(e.target.value)
+                setFieldErrors((current) => ({ ...current, doctorId: undefined }))
+              }}
               className={selectClass}
             >
               <option value="">Self / walk-in</option>
@@ -292,6 +327,7 @@ export function NewOrderForm({
                 </option>
               ))}
             </select>
+            {fieldErrors.doctorId && <p className="text-sm text-destructive" role="alert">{fieldErrors.doctorId}</p>}
           </Field>
 
           <div className="flex flex-col gap-2">
@@ -342,9 +378,13 @@ export function NewOrderForm({
                   min={0}
                   step="0.01"
                   value={discount}
-                  onChange={(e) => setDiscount(e.target.value)}
+                  onChange={(e) => {
+                    setDiscount(e.target.value)
+                    setFieldErrors((current) => ({ ...current, discount: undefined }))
+                  }}
                   className="w-28 text-right"
                 />
+                {fieldErrors.discount && <p className="text-sm text-destructive" role="alert">{fieldErrors.discount}</p>}
               </dd>
             </div>
             <div className="flex justify-between text-base font-semibold">
@@ -361,14 +401,23 @@ export function NewOrderForm({
                 min={0}
                 step="0.01"
                 value={payment}
-                onChange={(e) => setPayment(e.target.value)}
+                onChange={(e) => {
+                  setPayment(e.target.value)
+                  setFieldErrors((current) => ({ ...current, paymentAmount: undefined }))
+                }}
               />
+              {fieldErrors.paymentAmount && (
+                <p className="text-sm text-destructive" role="alert">{fieldErrors.paymentAmount}</p>
+              )}
             </Field>
             <Field label="Method" htmlFor="method">
               <select
                 id="method"
                 value={method}
-                onChange={(e) => setMethod(e.target.value)}
+                onChange={(e) => {
+                  setMethod(e.target.value)
+                  setFieldErrors((current) => ({ ...current, paymentMethod: undefined }))
+                }}
                 className={selectClass}
               >
                 {PAYMENT_METHODS.map((m) => (
@@ -377,6 +426,9 @@ export function NewOrderForm({
                   </option>
                 ))}
               </select>
+              {fieldErrors.paymentMethod && (
+                <p className="text-sm text-destructive" role="alert">{fieldErrors.paymentMethod}</p>
+              )}
             </Field>
           </div>
           <Button variant="outline" size="sm" onClick={() => setPayment(total.toFixed(2))}>
@@ -397,6 +449,9 @@ export function NewOrderForm({
             <p className="text-sm text-destructive" role="alert">
               {error}
             </p>
+          )}
+          {fieldErrors.branchId && (
+            <p className="text-sm text-destructive" role="alert">{fieldErrors.branchId}</p>
           )}
           <Button onClick={submit} disabled={submitting} className="h-10">
             {submitting && <Loader2 className="animate-spin" aria-hidden />}

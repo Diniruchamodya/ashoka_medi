@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { saveCategory, saveDoctor, savePartner, saveTemplate, saveTest } from '@/app/actions/catalog'
 import { Input } from '@/components/ui/input'
-import { CrudForm } from '@/components/lab/crud-form'
+import { CrudForm, type CrudFormContext } from '@/components/lab/crud-form'
 import { Field, selectClass } from '@/components/lab/page-parts'
 import { formatLKR } from '@/lib/format'
+import type { CrudState } from '@/app/actions/catalog'
+import { validateOptionalEmail, validateOptionalPhone } from '@/lib/form-validation'
 import { cn } from '@/lib/utils'
 
 type Option = { id: number; name: string }
@@ -47,6 +49,7 @@ export function TestForm({
     code: string
     price: string
     sampleType: string | null
+    aliases: string[]
     turnaroundHours: number
     categoryId: number | null
     partnerId: number | null
@@ -71,6 +74,14 @@ export function TestForm({
         </Field>
         <Field label="Sample type" htmlFor={uid('sample')}>
           <Input id={uid('sample')} name="sampleType" placeholder="Blood, Urine…" defaultValue={test?.sampleType ?? ''} />
+        </Field>
+        <Field label="Short names / aliases" htmlFor={uid('aliases')}>
+          <Input
+            id={uid('aliases')}
+            name="aliases"
+            placeholder="Comma-separated"
+            defaultValue={test?.aliases.join(', ') ?? ''}
+          />
         </Field>
         <Field label="Turnaround (hours)" htmlFor={uid('tat')}>
           <Input id={uid('tat')} name="turnaroundHours" type="number" min={1} defaultValue={test?.turnaroundHours ?? 24} />
@@ -110,25 +121,96 @@ export function DoctorForm({
   const uid = useUid('doc', doctor?.id)
   return (
     <CrudForm action={saveDoctor} submitLabel={doctor ? 'Save' : 'Add doctor'} resetOnSuccess={!doctor} onSuccess={onSuccess}>
+      {(context) => <DoctorFields {...context} doctor={doctor} uid={uid} />}
+    </CrudForm>
+  )
+}
+
+function DoctorFields({
+  state,
+  values,
+  setValue,
+  doctor,
+  uid,
+}: CrudFormContext & {
+  doctor?: { id: number; name: string; specialty: string | null; hospital: string | null; phone: string | null; email: string | null }
+  uid: (key: string) => string
+}) {
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  useEffect(() => setTouched({}), [state?.nonce])
+
+  const name = values.name ?? doctor?.name ?? ''
+  const phone = values.phone ?? doctor?.phone ?? ''
+  const email = values.email ?? doctor?.email ?? ''
+  const nameError = touched.name
+    ? name.trim() ? undefined : 'Doctor name is required.'
+    : state?.nameError
+  const phoneError = touched.phone ? validateOptionalPhone(phone) : state?.phoneError
+  const emailError = touched.email ? validateOptionalEmail(email) : state?.emailError
+  const update = (key: string, value: string) => {
+    setValue(key, value)
+    setTouched((current) => ({ ...current, [key]: true }))
+  }
+
+  return (
+    <>
       {doctor && <input type="hidden" name="id" value={doctor.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name" htmlFor={uid('name')} className="sm:col-span-2">
-          <Input id={uid('name')} name="name" required placeholder="Dr. " defaultValue={doctor?.name} />
+          <Input
+            id={uid('name')}
+            name="name"
+            required
+            placeholder="Dr. "
+            value={name}
+            onChange={(event) => update('name', event.target.value)}
+            aria-invalid={Boolean(nameError)}
+            aria-describedby={nameError ? uid('name-error') : undefined}
+          />
+          {nameError && <FieldError id={uid('name-error')}>{nameError}</FieldError>}
         </Field>
         <Field label="Specialty" htmlFor={uid('spec')}>
-          <Input id={uid('spec')} name="specialty" defaultValue={doctor?.specialty ?? ''} />
+          <Input
+            id={uid('spec')}
+            name="specialty"
+            value={values.specialty ?? doctor?.specialty ?? ''}
+            onChange={(event) => setValue('specialty', event.target.value)}
+          />
         </Field>
         <Field label="Hospital / clinic" htmlFor={uid('hosp')}>
-          <Input id={uid('hosp')} name="hospital" defaultValue={doctor?.hospital ?? ''} />
+          <Input
+            id={uid('hosp')}
+            name="hospital"
+            value={values.hospital ?? doctor?.hospital ?? ''}
+            onChange={(event) => setValue('hospital', event.target.value)}
+          />
         </Field>
         <Field label="Phone" htmlFor={uid('phone')}>
-          <Input id={uid('phone')} name="phone" type="tel" defaultValue={doctor?.phone ?? ''} />
+          <Input
+            id={uid('phone')}
+            name="phone"
+            type="tel"
+            value={phone}
+            onChange={(event) => update('phone', event.target.value)}
+            aria-invalid={Boolean(phoneError)}
+            aria-describedby={phoneError ? uid('phone-error') : undefined}
+          />
+          {phoneError && <FieldError id={uid('phone-error')}>{phoneError}</FieldError>}
         </Field>
         <Field label="Email" htmlFor={uid('email')}>
-          <Input id={uid('email')} name="email" type="email" defaultValue={doctor?.email ?? ''} />
+          <Input
+            id={uid('email')}
+            name="email"
+            type="email"
+            value={email}
+            onChange={(event) => update('email', event.target.value)}
+            aria-invalid={Boolean(emailError)}
+            aria-describedby={emailError ? uid('email-error') : undefined}
+          />
+          {emailError && <FieldError id={uid('email-error')}>{emailError}</FieldError>}
         </Field>
       </div>
-    </CrudForm>
+    </>
   )
 }
 
@@ -149,25 +231,103 @@ export function PartnerForm({
   const uid = useUid('partner', partner?.id)
   return (
     <CrudForm action={savePartner} submitLabel={partner ? 'Save' : 'Add partner'} resetOnSuccess={!partner} onSuccess={onSuccess}>
+      {(context) => <PartnerFields {...context} partner={partner} uid={uid} />}
+    </CrudForm>
+  )
+}
+
+function PartnerFields({
+  state,
+  values,
+  setValue,
+  partner,
+  uid,
+}: CrudFormContext & {
+  partner?: { id: number; name: string; contactPerson: string | null; phone: string | null; email: string | null; address: string | null }
+  uid: (key: string) => string
+}) {
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  useEffect(() => setTouched({}), [state?.nonce])
+
+  const name = values.name ?? partner?.name ?? ''
+  const phone = values.phone ?? partner?.phone ?? ''
+  const email = values.email ?? partner?.email ?? ''
+  const nameError = touched.name
+    ? name.trim() ? undefined : 'Laboratory name is required.'
+    : state?.nameError
+  const phoneError = touched.phone ? validateOptionalPhone(phone) : state?.phoneError
+  const emailError = touched.email ? validateOptionalEmail(email) : state?.emailError
+  const update = (key: string, value: string) => {
+    setValue(key, value)
+    setTouched((current) => ({ ...current, [key]: true }))
+  }
+
+  return (
+    <>
       {partner && <input type="hidden" name="id" value={partner.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Laboratory name" htmlFor={uid('name')} className="sm:col-span-2">
-          <Input id={uid('name')} name="name" required defaultValue={partner?.name} />
+          <Input
+            id={uid('name')}
+            name="name"
+            required
+            value={name}
+            onChange={(event) => update('name', event.target.value)}
+            aria-invalid={Boolean(nameError)}
+            aria-describedby={nameError ? uid('name-error') : undefined}
+          />
+          {nameError && <FieldError id={uid('name-error')}>{nameError}</FieldError>}
         </Field>
         <Field label="Contact person" htmlFor={uid('contact')}>
-          <Input id={uid('contact')} name="contactPerson" defaultValue={partner?.contactPerson ?? ''} />
+          <Input
+            id={uid('contact')}
+            name="contactPerson"
+            value={values.contactPerson ?? partner?.contactPerson ?? ''}
+            onChange={(event) => setValue('contactPerson', event.target.value)}
+          />
         </Field>
         <Field label="Phone" htmlFor={uid('phone')}>
-          <Input id={uid('phone')} name="phone" type="tel" defaultValue={partner?.phone ?? ''} />
+          <Input
+            id={uid('phone')}
+            name="phone"
+            type="tel"
+            value={phone}
+            onChange={(event) => update('phone', event.target.value)}
+            aria-invalid={Boolean(phoneError)}
+            aria-describedby={phoneError ? uid('phone-error') : undefined}
+          />
+          {phoneError && <FieldError id={uid('phone-error')}>{phoneError}</FieldError>}
         </Field>
         <Field label="Email" htmlFor={uid('email')}>
-          <Input id={uid('email')} name="email" type="email" defaultValue={partner?.email ?? ''} />
+          <Input
+            id={uid('email')}
+            name="email"
+            type="email"
+            value={email}
+            onChange={(event) => update('email', event.target.value)}
+            aria-invalid={Boolean(emailError)}
+            aria-describedby={emailError ? uid('email-error') : undefined}
+          />
+          {emailError && <FieldError id={uid('email-error')}>{emailError}</FieldError>}
         </Field>
         <Field label="Address" htmlFor={uid('address')}>
-          <Input id={uid('address')} name="address" defaultValue={partner?.address ?? ''} />
+          <Input
+            id={uid('address')}
+            name="address"
+            value={values.address ?? partner?.address ?? ''}
+            onChange={(event) => setValue('address', event.target.value)}
+          />
         </Field>
       </div>
-    </CrudForm>
+    </>
+  )
+}
+
+function FieldError({ id, children }: { id: string; children: string }) {
+  return (
+    <p id={id} className="text-sm text-destructive" role="alert">
+      {children}
+    </p>
   )
 }
 
