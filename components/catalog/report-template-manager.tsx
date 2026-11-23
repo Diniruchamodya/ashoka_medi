@@ -147,17 +147,17 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
         ) : groups.length === 0 ? (
           <EmptyState>No tests match this search.</EmptyState>
         ) : (
-          <Table>
+          <Table className="min-w-[1080px] table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Test Name</TableHead>
-                <TableHead>Sample</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">Margin</TableHead>
-                <TableHead>Outsource</TableHead>
-                <TableHead>Active</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="w-24">Code</TableHead>
+                <TableHead className="w-[30%] min-w-[300px]">Test Name</TableHead>
+                <TableHead className="w-32">Sample</TableHead>
+                <TableHead className="w-32 text-right">Price</TableHead>
+                <TableHead className="w-24 text-right">Margin</TableHead>
+                <TableHead className="w-36">Outsource</TableHead>
+                <TableHead className="w-32">Active</TableHead>
+                <TableHead className="w-52">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -182,8 +182,12 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                     return (
                       <Fragment key={row.id}>
                         <TableRow>
-                          <TableCell className="font-medium">{row.code}</TableCell>
                           <TableCell>
+                            <Badge variant="outline" className="font-mono text-[11px]">
+                              {row.code}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="min-w-[300px] whitespace-normal">
                             <div className="flex flex-col gap-1">
                               <span className="font-medium">{row.name}</span>
                               {usingDefault && <Badge variant="secondary" className="w-fit">System default</Badge>}
