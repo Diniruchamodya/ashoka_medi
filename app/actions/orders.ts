@@ -21,24 +21,26 @@ export async function searchPatients(query: string) {
   const q = query.trim()
   if (q.length < 2) return []
   const like = `%${q}%`
+  const phoneQuery = q.replace(/[\s()-]/g, '')
+  const searchTerms = [
+    ilike(patients.fullName, like),
+    ilike(patients.patientCode, like),
+    ilike(patients.nic, like),
+  ]
+  if (phoneQuery) {
+    searchTerms.push(
+      sql`regexp_replace(coalesce(${patients.phone}, ''), '[-[:space:]()]', '', 'g') ILIKE ${`%${phoneQuery}%`}`,
+    )
+  }
   return db
     .select({
       id: patients.id,
       patientCode: patients.patientCode,
       fullName: patients.fullName,
       phone: patients.phone,
-      gender: patients.gender,
-      dateOfBirth: patients.dateOfBirth,
     })
     .from(patients)
-    .where(
-      or(
-        ilike(patients.fullName, like),
-        ilike(patients.phone, like),
-        ilike(patients.patientCode, like),
-        ilike(patients.nic, like),
-      ),
-    )
+    .where(or(...searchTerms))
     .limit(8)
 }
 

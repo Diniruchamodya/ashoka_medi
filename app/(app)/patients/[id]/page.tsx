@@ -66,7 +66,16 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
           )}
         </Panel>
         <Panel title="Profile">
-          <PatientEditForm patient={patient} />
+          <PatientEditForm
+            patient={{
+              id: patient.id,
+              fullName: patient.fullName,
+              gender: patient.gender,
+              phone: patient.phone,
+              email: patient.email,
+              address: patient.address,
+            }}
+          />
         </Panel>
       </div>
     </>

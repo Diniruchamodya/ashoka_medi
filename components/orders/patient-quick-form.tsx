@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { createPatient } from '@/app/actions/patients'
 import { Button } from '@/components/ui/button'
@@ -9,35 +9,84 @@ import { Field, selectClass } from '@/components/lab/page-parts'
 
 type Created = { id: number; patientCode: string; fullName: string; phone: string | null }
 
-export function PatientFields({ defaults }: { defaults?: Record<string, string | null> }) {
-  const d = defaults ?? {}
+export type PatientFieldValues = {
+  fullName: string
+  gender: string
+  phone: string
+  email: string
+  address: string
+}
+
+export function PatientFields({
+  values,
+  onValueChange,
+  fullNameError,
+  idPrefix = 'patient',
+}: {
+  values: PatientFieldValues
+  onValueChange?: (key: keyof PatientFieldValues, value: string) => void
+  fullNameError?: string
+  idPrefix?: string
+}) {
+  const id = (field: string) => `${idPrefix}-${field}`
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="Full name *" htmlFor="fullName" className="sm:col-span-2">
-        <Input id="fullName" name="fullName" required defaultValue={d.fullName ?? ''} />
+      <Field label="Full name *" htmlFor={id('fullName')} className="sm:col-span-2">
+        <Input
+          id={id('fullName')}
+          name="fullName"
+          required
+          value={values.fullName}
+          onChange={(event) => onValueChange?.('fullName', event.target.value)}
+          aria-invalid={Boolean(fullNameError)}
+          aria-describedby={fullNameError ? id('fullName-error') : undefined}
+        />
+        {fullNameError && (
+          <p id={id('fullName-error')} className="text-sm text-destructive" role="alert">
+            {fullNameError}
+          </p>
+        )}
       </Field>
-      <Field label="Gender" htmlFor="gender">
-        <select id="gender" name="gender" defaultValue={d.gender ?? ''} className={selectClass}>
+      <Field label="Gender" htmlFor={id('gender')}>
+        <select
+          id={id('gender')}
+          name="gender"
+          value={values.gender}
+          onChange={(event) => onValueChange?.('gender', event.target.value)}
+          className={selectClass}
+        >
           <option value="">Not specified</option>
           <option value="male">Male</option>
           <option value="female">Female</option>
           <option value="other">Other</option>
         </select>
       </Field>
-      <Field label="Date of birth" htmlFor="dateOfBirth">
-        <Input id="dateOfBirth" name="dateOfBirth" type="date" defaultValue={d.dateOfBirth ?? ''} />
+      <Field label="Phone" htmlFor={id('phone')}>
+        <Input
+          id={id('phone')}
+          name="phone"
+          type="tel"
+          value={values.phone}
+          onChange={(event) => onValueChange?.('phone', event.target.value)}
+          placeholder="07X XXX XXXX"
+        />
       </Field>
-      <Field label="Phone" htmlFor="phone">
-        <Input id="phone" name="phone" type="tel" defaultValue={d.phone ?? ''} placeholder="07X XXX XXXX" />
+      <Field label="Email" htmlFor={id('email')}>
+        <Input
+          id={id('email')}
+          name="email"
+          type="email"
+          value={values.email}
+          onChange={(event) => onValueChange?.('email', event.target.value)}
+        />
       </Field>
-      <Field label="NIC" htmlFor="nic">
-        <Input id="nic" name="nic" defaultValue={d.nic ?? ''} />
-      </Field>
-      <Field label="Email" htmlFor="email">
-        <Input id="email" name="email" type="email" defaultValue={d.email ?? ''} />
-      </Field>
-      <Field label="Address" htmlFor="address">
-        <Input id="address" name="address" defaultValue={d.address ?? ''} />
+      <Field label="Address" htmlFor={id('address')}>
+        <Input
+          id={id('address')}
+          name="address"
+          value={values.address}
+          onChange={(event) => onValueChange?.('address', event.target.value)}
+        />
       </Field>
     </div>
   )
@@ -45,15 +94,36 @@ export function PatientFields({ defaults }: { defaults?: Record<string, string |
 
 export function PatientQuickForm({ onCreated }: { onCreated?: (p: Created) => void }) {
   const [state, action, pending] = useActionState(createPatient, undefined)
+  const [values, setValues] = useState<PatientFieldValues>({
+    fullName: '',
+    gender: '',
+    phone: '',
+    email: '',
+    address: '',
+  })
+  const [nameWasEdited, setNameWasEdited] = useState(false)
 
   useEffect(() => {
-    if (state?.patient) onCreated?.(state.patient)
-  }, [state, onCreated])
+    if (!state?.nonce) return
+    setValues({ fullName: '', gender: '', phone: '', email: '', address: '' })
+    if (state.patient) onCreated?.(state.patient)
+  }, [state?.nonce, onCreated])
 
   return (
-    <form action={action} className="flex flex-col gap-4">
-      <PatientFields />
-      {state?.error && (
+    <form
+      action={action}
+      className="flex flex-col gap-4"
+      onSubmit={() => setNameWasEdited(false)}
+    >
+      <PatientFields
+        values={values}
+        onValueChange={(key, value) => {
+          setValues((current) => ({ ...current, [key]: value }))
+          if (key === 'fullName') setNameWasEdited(true)
+        }}
+        fullNameError={nameWasEdited ? undefined : state?.fieldErrors?.fullName}
+      />
+      {state?.error && !state.fieldErrors?.fullName && (
         <p className="text-sm text-destructive" role="alert">
           {state.error}
         </p>

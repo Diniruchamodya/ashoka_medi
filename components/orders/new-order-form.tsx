@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { Check, Loader2, Search, X } from 'lucide-react'
 import { createOrder, searchPatients } from '@/app/actions/orders'
 import { Button } from '@/components/ui/button'
@@ -37,6 +37,7 @@ export function NewOrderForm({
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<PatientHit[]>([])
   const [searching, startSearch] = useTransition()
+  const searchRequestId = useRef(0)
   const [showNewPatient, setShowNewPatient] = useState(false)
 
   const [selected, setSelected] = useState<number[]>([])
@@ -64,21 +65,38 @@ export function NewOrderForm({
   const discountValue = Math.min(Math.max(Number(discount) || 0, 0), subtotal)
   const total = subtotal - discountValue
 
+  useEffect(() => {
+    const requestId = searchRequestId.current
+    const value = query.trim()
+    if (value.length < 2) {
+      setHits([])
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      startSearch(async () => {
+        const results = await searchPatients(value)
+        if (requestId === searchRequestId.current) setHits(results)
+      })
+    }, 300)
+
+    return () => window.clearTimeout(timeout)
+  }, [query, startSearch])
+
   function toggleTest(id: number) {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function applyTemplate(testIds: number[]) {
-    setSelected((prev) => [...new Set([...prev, ...testIds.filter((id) => testById.has(id))])])
+  function updatePatientQuery(value: string) {
+    if (value !== query) {
+      searchRequestId.current += 1
+      setHits([])
+    }
+    setQuery(value)
   }
 
-  function runSearch(value: string) {
-    setQuery(value)
-    if (value.trim().length < 2) {
-      setHits([])
-      return
-    }
-    startSearch(async () => setHits(await searchPatients(value)))
+  function applyTemplate(testIds: number[]) {
+    setSelected((prev) => [...new Set([...prev, ...testIds.filter((id) => testById.has(id))])])
   }
 
   function submit() {
@@ -139,8 +157,9 @@ export function NewOrderForm({
                   aria-hidden
                 />
                 <Input
+                  type="search"
                   value={query}
-                  onChange={(e) => runSearch(e.target.value)}
+                  onChange={(e) => updatePatientQuery(e.target.value)}
                   placeholder="Search by name, phone, NIC or patient ID"
                   aria-label="Search patients"
                   className="h-10 pl-8"
@@ -195,6 +214,7 @@ export function NewOrderForm({
           )}
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
+              type="search"
               value={testQuery}
               onChange={(e) => setTestQuery(e.target.value)}
               placeholder="Search tests by name or code"
