@@ -31,6 +31,8 @@ export default async function TemplatesPage({
   const { tab } = await searchParams
   const activeTab = tab === 'reports' ? 'reports' : 'orders'
 
+  if (activeTab === 'reports') return <ReportTemplates />
+
   return (
     <>
       <PageHeader title="Templates" description="Manage order packages and test report templates." />
@@ -47,16 +49,13 @@ export default async function TemplatesPage({
         </Link>
         <Link
           href="/templates?tab=reports"
-          aria-current={activeTab === 'reports' ? 'page' : undefined}
-          className={cn(
-            'rounded-md px-3 py-1.5 text-sm font-medium',
-            activeTab === 'reports' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
-          )}
+          aria-current={undefined}
+          className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           Report Templates
         </Link>
       </nav>
-      {activeTab === 'orders' ? <OrderPackages /> : <ReportTemplates />}
+      <OrderPackages />
     </>
   )
 }
@@ -130,6 +129,7 @@ async function ReportTemplates() {
         price: tests.price,
         active: tests.active,
         categoryName: testCategories.name,
+        partnerId: tests.partnerId,
         partnerName: labPartners.name,
       })
       .from(tests)

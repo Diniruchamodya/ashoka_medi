@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import {
@@ -12,7 +13,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { EmptyState, Panel } from '@/components/lab/page-parts'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { EmptyState, PageHeader, Panel, selectClass } from '@/components/lab/page-parts'
 import {
   Table,
   TableBody,
@@ -32,6 +40,7 @@ type ReportTemplateRowData = {
   sampleType: string | null
   price: string
   categoryName: string | null
+  partnerId: number | null
   partnerName: string | null
   active: boolean
   customConfiguration: ReportTemplateConfiguration | null
@@ -54,6 +63,7 @@ const REPORT_COLUMNS = [
 export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] }) {
   const [query, setQuery] = useState('')
   const [editingTestId, setEditingTestId] = useState<number | null>(null)
+  const [newTemplateOpen, setNewTemplateOpen] = useState(false)
   const router = useRouter()
   const closeEditor = useCallback(() => setEditingTestId(null), [])
   const term = query.trim().toLowerCase()
@@ -81,153 +91,215 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
   }, [rows, term])
 
   const hasDefaults = rows.some((row) => row.defaultConfiguration !== null)
+  const availableTests = rows.filter((row) =>
+    row.customConfiguration === null && row.defaultConfiguration === null,
+  )
 
   return (
-    <Panel
-      title="Report Templates"
-      description="Configure the result fields and columns used for each test."
-    >
-      {!hasDefaults && (
-        <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground" role="status">
-          No lab-approved system defaults are configured. Tests without a custom template are shown as Unconfigured.
-        </p>
-      )}
-      <div className="relative">
-        <Search
-          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden
-        />
-        <Input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search code, test, short name, sample, or category"
-          aria-label="Search report templates"
-          className="pl-8"
-        />
-      </div>
-      {rows.length === 0 ? (
-        <EmptyState>No tests are available to configure.</EmptyState>
-      ) : groups.length === 0 ? (
-        <EmptyState>No tests match this search.</EmptyState>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Test Name</TableHead>
-              <TableHead>Sample</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Margin</TableHead>
-              <TableHead>Outsource</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {groups.map((group) => (
-              <Fragment key={group.category}>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableCell colSpan={8} className="font-semibold">{group.category}</TableCell>
-                </TableRow>
-                {group.rows.map((row) => {
-                  const hasDefault = row.defaultConfiguration !== null
-                  const hasCustom = row.customConfiguration !== null
-                  const usingDefault = hasDefault && !hasCustom && !row.defaultHidden
-                  const status = hasCustom ? 'Custom' : usingDefault ? 'System default' : 'Unconfigured'
-                  const seed = row.customConfiguration ?? row.defaultConfiguration ?? EMPTY_CONFIGURATION
+    <>
+      <PageHeader
+        title="Report Templates"
+        description="Configure which columns and parameters appear on each test’s report."
+        actions={
+          <Button type="button" onClick={() => setNewTemplateOpen(true)}>
+            <Plus aria-hidden />
+            New Template
+          </Button>
+        }
+      />
+      <nav aria-label="Template sections" className="flex w-fit gap-1 rounded-lg border border-border bg-muted/40 p-1">
+        <Link
+          href="/templates"
+          className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+        >
+          Order Packages
+        </Link>
+        <Link
+          href="/templates?tab=reports"
+          aria-current="page"
+          className="rounded-md bg-background px-3 py-1.5 text-sm font-medium shadow-sm"
+        >
+          Report Templates
+        </Link>
+      </nav>
+      <Panel>
+        {!hasDefaults && (
+          <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground" role="status">
+            No lab-approved system defaults are configured. Tests without a custom template are shown as Unconfigured.
+          </p>
+        )}
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search templates by name, short name, sample or category ..."
+            aria-label="Search report templates"
+            className="pl-8"
+          />
+        </div>
+        {rows.length === 0 ? (
+          <EmptyState>No tests are available to configure.</EmptyState>
+        ) : groups.length === 0 ? (
+          <EmptyState>No tests match this search.</EmptyState>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Test Name</TableHead>
+                <TableHead>Sample</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-right">Margin</TableHead>
+                <TableHead>Outsource</TableHead>
+                <TableHead>Active</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {groups.map((group) => (
+                <Fragment key={group.category}>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableCell colSpan={8} className="font-semibold">{group.category}</TableCell>
+                  </TableRow>
+                  {group.rows.map((row) => {
+                    const hasDefault = row.defaultConfiguration !== null
+                    const hasCustom = row.customConfiguration !== null
+                    const usingDefault = hasDefault && !hasCustom && !row.defaultHidden
+                    const state = !row.active
+                      ? 'Inactive'
+                      : hasCustom || usingDefault
+                        ? 'Active'
+                        : hasDefault
+                          ? 'Hidden'
+                          : 'Unconfigured'
+                    const seed = row.customConfiguration ?? row.defaultConfiguration ?? EMPTY_CONFIGURATION
 
-                  return (
-                    <Fragment key={row.id}>
-                      <TableRow>
-                        <TableCell className="font-medium">{row.code}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <span className="font-medium">{row.name}</span>
-                            <Badge
-                              variant={status === 'System default' ? 'secondary' : status === 'Custom' ? 'outline' : 'ghost'}
-                              className="w-fit"
-                            >
-                              {status}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>{row.sampleType || '—'}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatLKR(row.price)}</TableCell>
-                        <TableCell className="text-right tabular-nums">—</TableCell>
-                        <TableCell>{row.partnerName ?? '—'}</TableCell>
-                        <TableCell>
-                          <Badge variant={row.active ? 'secondary' : 'outline'}>
-                            {row.active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex min-w-44 flex-wrap items-center gap-1">
-                            {hasCustom ? (
-                              <>
-                                <Button variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
-                                  Edit
-                                </Button>
-                                <DeleteReportTemplateButton
-                                  testId={row.id}
-                                  testName={row.name}
-                                  onDeleted={closeEditor}
-                                />
-                              </>
-                            ) : (
-                              <Button variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
-                                {usingDefault ? 'Customise' : 'Configure'}
-                              </Button>
-                            )}
-                            {hasDefault && (!hasCustom || row.defaultHidden) && (
-                              <SystemTemplateVisibilityButton
-                                testId={row.id}
-                                hidden={row.defaultHidden}
-                              />
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      {editingTestId === row.id && (
+                    return (
+                      <Fragment key={row.id}>
                         <TableRow>
-                          <TableCell colSpan={8} className="whitespace-normal">
-                            <ReportTemplateEditor
-                              key={`${row.id}-${hasCustom ? 'custom' : 'new'}`}
-                              testId={row.id}
-                              testName={row.name}
-                              initialConfiguration={seed}
-                              isCustom={hasCustom}
-                              onClose={closeEditor}
-                            />
+                          <TableCell className="font-medium">{row.code}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span className="font-medium">{row.name}</span>
+                              {usingDefault && <Badge variant="secondary" className="w-fit">System default</Badge>}
+                              {hasCustom && <Badge variant="outline" className="w-fit">Custom</Badge>}
+                              {!hasDefault && !hasCustom && <Badge variant="ghost" className="w-fit">Unconfigured</Badge>}
+                            </div>
+                          </TableCell>
+                          <TableCell>{row.sampleType || '—'}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatLKR(row.price)}</TableCell>
+                          <TableCell className="text-right tabular-nums">—</TableCell>
+                          <TableCell>{row.partnerName ?? (row.partnerId ? 'Outsourced' : 'In-house')}</TableCell>
+                          <TableCell>
+                            <Badge variant={state === 'Active' ? 'secondary' : 'outline'}>{state}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex min-w-44 flex-wrap items-center gap-1">
+                              {hasCustom ? (
+                                <>
+                                  <Button type="button" variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
+                                    Edit
+                                  </Button>
+                                  <DeleteReportTemplateButton
+                                    testId={row.id}
+                                    testName={row.name}
+                                    onDeleted={closeEditor}
+                                  />
+                                </>
+                              ) : usingDefault ? (
+                                <>
+                                  <Button type="button" variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
+                                    Customise
+                                  </Button>
+                                  <SystemTemplateVisibilityButton testId={row.id} hidden={false} />
+                                </>
+                              ) : hasDefault ? (
+                                <SystemTemplateVisibilityButton testId={row.id} hidden />
+                              ) : (
+                                <Button type="button" variant="outline" size="sm" onClick={() => setEditingTestId(row.id)}>
+                                  Configure
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </Fragment>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </Panel>
+                        {editingTestId === row.id && (
+                          <TableRow>
+                            <TableCell colSpan={8} className="whitespace-normal">
+                              <ReportTemplateEditor
+                                key={`${row.id}-${hasCustom ? 'custom' : 'new'}`}
+                                testId={row.id}
+                                testName={row.name}
+                                initialConfiguration={seed}
+                                isCustom={hasCustom}
+                                onClose={closeEditor}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </Fragment>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Panel>
+      <Dialog open={newTemplateOpen} onOpenChange={setNewTemplateOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>New report template</DialogTitle>
+            <DialogDescription>
+              Choose a test and configure the parameters and columns for its report.
+            </DialogDescription>
+          </DialogHeader>
+          {newTemplateOpen && availableTests.length > 0 ? (
+            <ReportTemplateEditor
+              key="new-report-template"
+              testId={null}
+              testName=""
+              testOptions={availableTests.map(({ id, code, name }) => ({ id, code, name }))}
+              createOnly
+              initialConfiguration={EMPTY_CONFIGURATION}
+              isCustom={false}
+              onClose={() => setNewTemplateOpen(false)}
+            />
+          ) : (
+            <EmptyState>Every test already has a custom template or an approved system default.</EmptyState>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
 function ReportTemplateEditor({
   testId,
   testName,
+  testOptions,
+  createOnly = false,
   initialConfiguration,
   isCustom,
   onClose,
 }: {
-  testId: number
+  testId: number | null
   testName: string
+  testOptions?: { id: number; code: string; name: string }[]
+  createOnly?: boolean
   initialConfiguration: ReportTemplateConfiguration
   isCustom: boolean
   onClose: () => void
 }) {
   const [state, formAction, pending] = useActionState(saveReportTemplate, undefined)
+  const [selectedTestId, setSelectedTestId] = useState<number | ''>(() =>
+    testId ?? testOptions?.[0]?.id ?? '',
+  )
   const [parameters, setParameters] = useState<ReportTemplateParameter[]>(() =>
     initialConfiguration.parameters.length > 0
       ? initialConfiguration.parameters.map((parameter) => ({ ...parameter }))
@@ -236,6 +308,10 @@ function ReportTemplateEditor({
   const [columns, setColumns] = useState<string[]>(initialConfiguration.columns)
   const router = useRouter()
   const handledNonce = useRef<number | null>(null)
+  const selectedTestName =
+    testId === null
+      ? testOptions?.find((test) => test.id === selectedTestId)?.name ?? ''
+      : testName
 
   useEffect(() => {
     if (!state?.success || handledNonce.current === state.nonce) return
@@ -259,9 +335,35 @@ function ReportTemplateEditor({
 
   return (
     <form action={formAction} className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4">
-      <input type="hidden" name="testId" value={testId} />
+      {testId === null ? (
+        <>
+          {createOnly && <input type="hidden" name="createOnly" value="true" />}
+          <label className="flex max-w-xl flex-col gap-1.5 text-sm font-medium">
+            Test
+            <select
+              name="testId"
+              required
+              value={selectedTestId}
+              onChange={(event) => setSelectedTestId(event.target.value ? Number(event.target.value) : '')}
+              className={selectClass}
+            >
+              <option value="" disabled>Choose a test</option>
+              {testOptions?.map((test) => (
+                <option key={test.id} value={test.id}>
+                  {test.name} ({test.code})
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      ) : (
+        <input type="hidden" name="testId" value={testId} />
+      )}
       <div>
-        <h3 className="font-semibold">{isCustom ? 'Edit custom report template' : 'Configure report template'} · {testName}</h3>
+        <h3 className="font-semibold">
+          {isCustom ? 'Edit custom report template' : 'Configure report template'}
+          {selectedTestName && ` · ${selectedTestName}`}
+        </h3>
         {!isCustom && initialConfiguration.parameters.some((parameter) => parameter.name) && (
           <p className="mt-1 text-sm text-muted-foreground">
             Built-in values are prefilled. Saving creates a custom copy without changing the system default.

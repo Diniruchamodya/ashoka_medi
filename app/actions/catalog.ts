@@ -441,13 +441,24 @@ export async function saveReportTemplate(
     const [test] = await db.select({ id: tests.id }).from(tests).where(eq(tests.id, testId)).limit(1)
     if (!test) return { error: 'Test not found.', nonce: Date.now() }
 
-    await db
-      .insert(reportTemplates)
-      .values({ testId, configuration })
-      .onConflictDoUpdate({
-        target: reportTemplates.testId,
-        set: { configuration, updatedAt: new Date() },
-      })
+    if (fd.get('createOnly') === 'true') {
+      const created = await db
+        .insert(reportTemplates)
+        .values({ testId, configuration })
+        .onConflictDoNothing()
+        .returning({ id: reportTemplates.id })
+      if (created.length === 0) {
+        return { error: 'A report template already exists for this test.', nonce: Date.now() }
+      }
+    } else {
+      await db
+        .insert(reportTemplates)
+        .values({ testId, configuration })
+        .onConflictDoUpdate({
+          target: reportTemplates.testId,
+          set: { configuration, updatedAt: new Date() },
+        })
+    }
   } catch (error) {
     console.error('[report templates] save failed', error)
     return { error: 'Could not save the report template. Please try again.', nonce: Date.now() }
