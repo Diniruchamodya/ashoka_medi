@@ -5,8 +5,7 @@ import { branches, staffProfiles, user } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/staff'
 import { ROLE_LABELS, type Role } from '@/lib/permissions'
 import { PageHeader, Panel } from '@/components/lab/page-parts'
-import { EditToggle } from '@/components/lab/crud-form'
-import { StaffForm } from '@/components/staff/staff-form'
+import { StaffForm, StaffRowActions } from '@/components/staff/staff-form'
 
 export const metadata: Metadata = { title: 'Staff' }
 
@@ -51,9 +50,19 @@ export default async function StaffPage() {
                     Disabled
                   </span>
                 )}
-                <EditToggle label={`Edit ${name}`}>
-                  <StaffForm staff={p} branches={branchRows} />
-                </EditToggle>
+                <StaffRowActions
+                  staff={{
+                    userId: p.userId,
+                    name,
+                    email,
+                    phone: p.phone,
+                    role: p.role,
+                    branchIds: p.branchIds,
+                    active: p.active,
+                  }}
+                  branches={branchRows}
+                  isCurrentUser={p.userId === me.user.id}
+                />
               </li>
             ))}
           </ul>

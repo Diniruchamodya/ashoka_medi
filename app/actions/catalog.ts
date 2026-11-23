@@ -9,9 +9,12 @@ import { assertPermission } from '@/lib/staff'
 export type CrudState =
   | {
       error?: string
+      nameError?: string
+      emailError?: string
       phoneError?: string
       passwordError?: string
       branchError?: string
+      offerDeactivate?: boolean
       success?: string
       nonce?: number
     }
