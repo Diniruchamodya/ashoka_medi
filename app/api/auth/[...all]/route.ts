@@ -17,6 +17,10 @@ export async function POST(request: Request) {
 
   const clientIp = getTrustedClientIp(request)
   if (!clientIp) {
+    console.error('[sign-in-rate-limit] unavailable', {
+      step: 'resolve_client_ip',
+      code: 'TRUSTED_IP_UNAVAILABLE',
+    })
     return Response.json(
       { code: 'SERVICE_UNAVAILABLE', message: 'Sign-in is temporarily unavailable. Please try again.' },
       { status: 503 },
@@ -41,6 +45,10 @@ export async function POST(request: Request) {
     return await authenticateWithRateLimit(email, clientIp, () => handlers.POST(request))
   } catch (error) {
     if (error instanceof SignInRateLimitUnavailable) {
+      console.error('[sign-in-rate-limit] unavailable', {
+        step: error.step,
+        code: error.code,
+      })
       return Response.json(
         { code: 'SERVICE_UNAVAILABLE', message: error.message },
         { status: 503 },

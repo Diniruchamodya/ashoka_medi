@@ -8,20 +8,39 @@ type RateLimitClient = PoolClient
 const MAX_FAILURES = 5
 const FAILURE_WINDOW_MINUTES = 5
 const COOLDOWN_MINUTES = 5
-const TOO_MANY_PREFIX = 'Too many sign-in attempts. Please try again in '
-const FIRST_LIMIT_MESSAGE = `${TOO_MANY_PREFIX}${COOLDOWN_MINUTES} minutes`
+const TOO_MANY_PREFIX = 'Too many sign-in attempts. Try again in '
 
 export class SignInRateLimitUnavailable extends Error {
-  constructor() {
+  constructor(
+    readonly step: string,
+    readonly code: string,
+  ) {
     super('Sign-in is temporarily unavailable. Please try again.')
   }
+}
+
+function safeErrorCode(error: unknown) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    /^[A-Z0-9_]{1,32}$/.test(error.code)
+  ) {
+    return error.code
+  }
+  return 'UNKNOWN'
+}
+
+function rateLimitError(step: string, error: unknown) {
+  return new SignInRateLimitUnavailable(step, safeErrorCode(error))
 }
 
 function hashKey(scope: string, value: string) {
   const secret =
     process.env.BETTER_AUTH_SECRET ??
     (process.env.NODE_ENV === 'development' ? 'ashoka-local-sign-in-rate-limit' : null)
-  if (!secret) throw new SignInRateLimitUnavailable()
+  if (!secret) throw new SignInRateLimitUnavailable('rate_limit_secret', 'MISSING_SECRET')
   return createHmac('sha256', secret).update(`${scope}\0${value}`).digest('hex')
 }
 
@@ -41,17 +60,16 @@ export function getTrustedClientIp(request: Request): string | null {
   return process.env.NODE_ENV === 'development' ? '127.0.0.1' : null
 }
 
-function rateLimitResponse(remainingMs: number, firstReached = false) {
-  let message = FIRST_LIMIT_MESSAGE
-  if (!firstReached) {
-    if (remainingMs >= 60_000) {
-      const minutes = Math.ceil(remainingMs / 60_000)
-      message = `${TOO_MANY_PREFIX}${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`
-    } else {
-      const seconds = Math.max(1, Math.ceil(remainingMs / 1000))
-      message = `${TOO_MANY_PREFIX}${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
-    }
-  }
+function rateLimitResponse(remainingMs: number) {
+  const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  const remainingTime = minutes === 0
+    ? `${seconds} second${seconds === 1 ? '' : 's'}`
+    : seconds === 0
+      ? `${minutes} minute${minutes === 1 ? '' : 's'}`
+      : `${minutes} minute${minutes === 1 ? '' : 's'} ${seconds} second${seconds === 1 ? '' : 's'}`
+  const message = `${TOO_MANY_PREFIX}${remainingTime}.`
   return Response.json(
     { code: 'TOO_MANY_REQUESTS', message },
     {
@@ -72,6 +90,26 @@ async function clearFailures(
   )
 }
 
+async function clearExpiredFailures(
+  client: RateLimitClient,
+  pairHash: string,
+  ipHash: string,
+) {
+  await client.query(
+    `DELETE FROM sign_in_rate_limits
+     WHERE (("scope" = 'email_ip' AND "keyHash" = $1)
+       OR ("scope" = 'ip' AND "keyHash" = $2))
+       AND (
+         "lockedUntil" <= statement_timestamp()
+         OR (
+           "lockedUntil" IS NULL
+             AND "windowStartedAt" <= statement_timestamp() - ($3::double precision * interval '1 minute')
+         )
+       )`,
+    [pairHash, ipHash, FAILURE_WINDOW_MINUTES],
+  )
+}
+
 async function incrementFailure(
   client: RateLimitClient,
   scope: 'email_ip' | 'ip',
@@ -82,23 +120,23 @@ async function incrementFailure(
      VALUES ($1, $2, 1, statement_timestamp(), statement_timestamp())
      ON CONFLICT ("scope", "keyHash") DO UPDATE SET
        "failureCount" = CASE
-         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4 * interval '1 minute')
+         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4::double precision * interval '1 minute')
            OR sign_in_rate_limits."lockedUntil" <= statement_timestamp()
          THEN 1
          ELSE sign_in_rate_limits."failureCount" + 1
        END,
        "windowStartedAt" = CASE
-         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4 * interval '1 minute')
+         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4::double precision * interval '1 minute')
            OR sign_in_rate_limits."lockedUntil" <= statement_timestamp()
          THEN statement_timestamp()
          ELSE sign_in_rate_limits."windowStartedAt"
        END,
        "lockedUntil" = CASE
-         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4 * interval '1 minute')
+         WHEN sign_in_rate_limits."windowStartedAt" <= statement_timestamp() - ($4::double precision * interval '1 minute')
            OR sign_in_rate_limits."lockedUntil" <= statement_timestamp()
          THEN NULL
          WHEN sign_in_rate_limits."failureCount" + 1 >= $3
-         THEN statement_timestamp() + ($5 * interval '1 minute')
+         THEN statement_timestamp() + ($5::double precision * interval '1 minute')
          ELSE NULL
        END,
        "updatedAt" = statement_timestamp()
@@ -115,9 +153,8 @@ async function recordFailure(
   pairHash: string,
   ipHash: string,
 ) {
-  const pair = await incrementFailure(client, 'email_ip', pairHash)
-  const ip = await incrementFailure(client, 'ip', ipHash)
-  return pair.failureCount >= MAX_FAILURES || ip.failureCount >= MAX_FAILURES
+  await incrementFailure(client, 'email_ip', pairHash)
+  await incrementFailure(client, 'ip', ipHash)
 }
 
 async function lockedRemainingMs(
@@ -125,19 +162,18 @@ async function lockedRemainingMs(
   pairHash: string,
   ipHash: string,
 ) {
-  const result = await client.query<{ lockedUntil: Date }>(
-    `SELECT "lockedUntil"
+  const result = await client.query<{ remainingMs: number }>(
+    `SELECT GREATEST(
+       0,
+       EXTRACT(EPOCH FROM ("lockedUntil" - statement_timestamp())) * 1000
+     )::double precision AS "remainingMs"
      FROM sign_in_rate_limits
      WHERE "lockedUntil" > statement_timestamp()
        AND (("scope" = 'email_ip' AND "keyHash" = $1)
          OR ("scope" = 'ip' AND "keyHash" = $2))`,
     [pairHash, ipHash],
   )
-  const now = Date.now()
-  return Math.max(
-    0,
-    ...result.rows.map((row) => row.lockedUntil.getTime() - now),
-  )
+  return Math.max(0, ...result.rows.map((row) => row.remainingMs))
 }
 
 async function rollback(
@@ -147,8 +183,8 @@ async function rollback(
   if (!transactionOpen) return
   try {
     await client.query('ROLLBACK')
-  } catch {
-    throw new SignInRateLimitUnavailable()
+  } catch (error) {
+    throw rateLimitError('rollback', error)
   }
 }
 
@@ -164,17 +200,20 @@ export async function authenticateWithRateLimit(
   let client: RateLimitClient
   try {
     client = await rateLimitPool.connect()
-  } catch {
-    throw new SignInRateLimitUnavailable()
+  } catch (error) {
+    throw rateLimitError('database_connect', error)
   }
   let transactionOpen = false
 
   try {
     let remainingMs: number
+    let counterStep = 'begin_transaction'
     try {
       await client.query('BEGIN')
       transactionOpen = true
+      counterStep = 'acquire_ip_lock'
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockHash])
+      counterStep = 'prune_old_limits'
       await client.query(
         `WITH expired AS (
            SELECT "scope", "keyHash"
@@ -189,19 +228,22 @@ export async function authenticateWithRateLimit(
          WHERE limits."scope" = expired."scope"
            AND limits."keyHash" = expired."keyHash"`,
       )
+      counterStep = 'reset_expired_counter'
+      await clearExpiredFailures(client, pairHash, ipHash)
+      counterStep = 'check_cooldown'
       remainingMs = await lockedRemainingMs(client, pairHash, ipHash)
-    } catch {
+    } catch (error) {
       await rollback(client, transactionOpen)
-      throw new SignInRateLimitUnavailable()
+      throw rateLimitError(counterStep, error)
     }
 
     if (remainingMs > 0) {
       try {
         await client.query('COMMIT')
         transactionOpen = false
-      } catch {
+      } catch (error) {
         await rollback(client, transactionOpen)
-        throw new SignInRateLimitUnavailable()
+        throw rateLimitError('commit_blocked_attempt', error)
       }
       return rateLimitResponse(remainingMs)
     }
@@ -211,23 +253,31 @@ export async function authenticateWithRateLimit(
       response = await authenticate()
     } catch (error) {
       await rollback(client, transactionOpen)
-      throw error
+      throw rateLimitError('authenticate', error)
     }
 
+    let authStep = 'record_failure'
     try {
       if (response.status === 401) {
-        const limitReached = await recordFailure(client, pairHash, ipHash)
+        await recordFailure(client, pairHash, ipHash)
+        authStep = 'check_cooldown_after_failure'
+        remainingMs = await lockedRemainingMs(client, pairHash, ipHash)
+        authStep = 'commit_failure'
         await client.query('COMMIT')
         transactionOpen = false
-        return limitReached ? rateLimitResponse(COOLDOWN_MINUTES * 60_000, true) : response
+        return remainingMs > 0 ? rateLimitResponse(remainingMs) : response
       }
-      if (response.ok) await clearFailures(client, pairHash)
+      if (response.ok) {
+        authStep = 'clear_successful_email_counter'
+        await clearFailures(client, pairHash)
+      }
+      authStep = 'commit_authentication'
       await client.query('COMMIT')
       transactionOpen = false
       return response
-    } catch {
+    } catch (error) {
       await rollback(client, transactionOpen)
-      throw new SignInRateLimitUnavailable()
+      throw rateLimitError(authStep, error)
     }
   } finally {
     client.release()
