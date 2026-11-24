@@ -396,8 +396,6 @@ export async function createResultPdf({
   patientCode,
   patientPhone,
   branchName,
-  branchAddress,
-  branchPhone,
   partnerLabName,
   testName,
   testCode,
@@ -475,17 +473,27 @@ export async function createResultPdf({
     color: COLORS.teal,
     lineHeight: 22,
   })
-  const contacts = [
-    branchAddress?.trim() ? `Address: ${branchAddress.trim()}` : '',
-    branchPhone?.trim() ? `Phone: ${branchPhone.trim()}` : '',
-  ].filter(Boolean).join('  ·  ')
-  const contactLines = contacts
-    ? drawWrappedText(page, contacts, brandX, y - 27, brandWidth, 8.5, fonts, {
-        color: COLORS.muted,
-        lineHeight: 11,
-      })
-    : 0
-  y -= Math.max(logoSize.height, 31 + contactLines * 11) + 13
+  const addressLines = drawWrappedText(
+    page,
+    'No. 21, Braybrook Street, Hambantota, Sri Lanka',
+    brandX,
+    y - 27,
+    brandWidth,
+    9,
+    fonts,
+    { color: COLORS.muted, lineHeight: 12 },
+  )
+  const phoneLines = drawWrappedText(
+    page,
+    'Phone: 070 601 0601',
+    brandX,
+    y - 27 - addressLines * 12,
+    brandWidth,
+    9,
+    fonts,
+    { color: COLORS.muted, lineHeight: 12 },
+  )
+  y -= Math.max(logoSize.height, 31 + (addressLines + phoneLines) * 12) + 13
   page.drawLine({
     start: { x: MARGIN, y },
     end: { x: PAGE_WIDTH - MARGIN, y },
