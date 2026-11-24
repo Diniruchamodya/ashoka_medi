@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { saveCategory, saveDoctor, savePartner, saveTemplate, saveTest } from '@/app/actions/catalog'
+import { useEffect, useState, useTransition } from 'react'
+import { restoreTest, saveCategory, saveDoctor, savePartner, saveTemplate, saveTest } from '@/app/actions/catalog'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { CrudForm, type CrudFormContext } from '@/components/lab/crud-form'
 import { Field, selectClass } from '@/components/lab/page-parts'
 import { formatLKR } from '@/lib/format'
@@ -59,15 +60,60 @@ export function TestForm({
   onSuccess?: () => void
 }) {
   const uid = useUid('test', test?.id)
+  const [formKey, setFormKey] = useState(0)
+  const [restoreNotice, setRestoreNotice] = useState('')
   return (
-    <CrudForm action={saveTest} submitLabel={test ? 'Save' : 'Add test'} resetOnSuccess={!test} onSuccess={onSuccess}>
+    <CrudForm
+      key={formKey}
+      action={saveTest}
+      submitLabel={test ? 'Save' : 'Add test'}
+      resetOnSuccess={!test}
+      onSuccess={onSuccess}
+      feedback={(state) => {
+        const archivedConflicts = state?.testConflicts?.filter((conflict) => !conflict.active) ?? []
+        return (
+          <>
+            {state?.nameError && <FieldError id={uid('name-error')}>{`Name conflict: ${state.nameError}`}</FieldError>}
+            {state?.codeError && <FieldError id={uid('code-error')}>{`Code conflict: ${state.codeError}`}</FieldError>}
+            {archivedConflicts.length > 0 && (
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                <p className="text-sm" role="status">
+                  A matching test is archived. Restore it instead of adding a new record.
+                </p>
+                {archivedConflicts.map((conflict) => (
+                  <RestoreTestButton
+                    key={conflict.id}
+                    conflict={conflict}
+                    onRestored={(message) => {
+                      setRestoreNotice(message)
+                      setFormKey((key) => key + 1)
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {restoreNotice && (
+              <p className="text-sm text-success" role="status">
+                {restoreNotice}
+              </p>
+            )}
+          </>
+        )
+      }}
+    >
       {test && <input type="hidden" name="id" value={test.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Test name" htmlFor={uid('name')} className="sm:col-span-2">
-          <Input id={uid('name')} name="name" required defaultValue={test?.name} />
+          <Input
+            id={uid('name')}
+            name="name"
+            required
+            defaultValue={test?.name}
+            aria-describedby={uid('name-error')}
+          />
         </Field>
         <Field label="Code" htmlFor={uid('code')}>
-          <Input id={uid('code')} name="code" required defaultValue={test?.code} />
+          <Input id={uid('code')} name="code" required defaultValue={test?.code} aria-describedby={uid('code-error')} />
         </Field>
         <Field label="Price (LKR)" htmlFor={uid('price')}>
           <Input id={uid('price')} name="price" type="number" min={0} step="0.01" required defaultValue={test?.price} />
@@ -108,6 +154,46 @@ export function TestForm({
         </Field>
       </div>
     </CrudForm>
+  )
+}
+
+function RestoreTestButton({
+  conflict,
+  onRestored,
+}: {
+  conflict: { id: number; name: string; code: string; fields: string[] }
+  onRestored: (message: string) => void
+}) {
+  const [pending, startTransition] = useTransition()
+  const [message, setMessage] = useState<{ text: string; error: boolean }>()
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button
+        type="button"
+        variant="outline"
+        disabled={pending}
+        onClick={() => {
+          const fd = new FormData()
+          fd.set('id', String(conflict.id))
+          startTransition(async () => {
+            const result = await restoreTest(fd)
+            if (result?.success) onRestored(result.success)
+            else setMessage({ text: result?.error ?? 'Restore failed.', error: true })
+          })
+        }}
+      >
+        {pending ? 'Restoring…' : `Restore ${conflict.name}`}
+      </Button>
+      <span className="text-xs text-muted-foreground">
+        {conflict.code} · matches {conflict.fields.join(' and ')}
+      </span>
+      {message && (
+        <span className="text-sm" role={message.error ? 'alert' : 'status'}>
+          {message.text}
+        </span>
+      )}
+    </div>
   )
 }
 

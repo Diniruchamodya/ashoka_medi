@@ -15,12 +15,14 @@ export function CrudForm({
   action,
   submitLabel,
   children,
+  feedback,
   resetOnSuccess = false,
   onSuccess,
 }: {
   action: (state: CrudState, fd: FormData) => Promise<CrudState>
   submitLabel: string
   children: React.ReactNode | ((context: CrudFormContext) => React.ReactNode)
+  feedback?: (state: CrudState) => React.ReactNode
   resetOnSuccess?: boolean
   onSuccess?: () => void
 }) {
@@ -55,12 +57,13 @@ export function CrudForm({
       }
     >
       {renderFields ? children({ state, values, setValue }) : children}
+      {feedback?.(state)}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>
           {pending && <Loader2 className="animate-spin" aria-hidden />}
           {submitLabel}
         </Button>
-        {state?.error && !state.nameError && !state.phoneError && !state.emailError && (
+        {state?.error && !state.nameError && !state.codeError && !state.phoneError && !state.emailError && (
           <p className="text-sm text-destructive" role="alert">
             {state.error}
           </p>

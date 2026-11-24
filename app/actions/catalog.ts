@@ -20,15 +20,25 @@ export type CrudState =
   | {
       error?: string
       nameError?: string
+      codeError?: string
       emailError?: string
       phoneError?: string
       passwordError?: string
       branchError?: string
+      testConflicts?: TestConflict[]
       offerDeactivate?: boolean
       success?: string
       nonce?: number
     }
   | undefined
+
+type TestConflict = {
+  id: number
+  name: string
+  code: string
+  active: boolean
+  fields: ('name' | 'code')[]
+}
 
 export type ReportTemplateState =
   | {
@@ -200,14 +210,85 @@ export async function saveTest(_: CrudState, fd: FormData): Promise<CrudState> {
     active: fd.get('active') !== 'off',
   }
   try {
+    const normalizedTestName = sql`lower(btrim(regexp_replace(${tests.name}, '[[:space:]]+', ' ', 'g'))) = ${normalizeName(name)}`
+    const excludedId = id ? ne(tests.id, id) : undefined
+    const [nameMatches, codeMatches] = await Promise.all([
+      db
+        .select({ id: tests.id, name: tests.name, code: tests.code, active: tests.active })
+        .from(tests)
+        .where(and(normalizedTestName, excludedId)),
+      db
+        .select({ id: tests.id, name: tests.name, code: tests.code, active: tests.active })
+        .from(tests)
+        .where(and(eq(tests.code, code), excludedId))
+        .limit(1),
+    ])
+    const conflictsById = new Map<number, TestConflict>()
+    for (const [field, matches] of [['name', nameMatches], ['code', codeMatches]] as const) {
+      for (const match of matches) {
+        const conflict = conflictsById.get(match.id) ?? { ...match, fields: [] }
+        if (!conflict.fields.includes(field)) conflict.fields.push(field)
+        conflictsById.set(match.id, conflict)
+      }
+    }
+    const testConflicts = [...conflictsById.values()]
+    if (testConflicts.length > 0) {
+      const activeNameConflict = testConflicts.some((conflict) => conflict.active && conflict.fields.includes('name'))
+      const activeCodeConflict = testConflicts.some((conflict) => conflict.active && conflict.fields.includes('code'))
+      const archivedNameConflict = testConflicts.some((conflict) => !conflict.active && conflict.fields.includes('name'))
+      const archivedCodeConflict = testConflicts.some((conflict) => !conflict.active && conflict.fields.includes('code'))
+      return {
+        error: 'A matching test already exists.',
+        nameError: activeNameConflict
+          ? 'An active test with this name already exists.'
+          : archivedNameConflict
+            ? 'This name matches an archived test that can be restored.'
+            : undefined,
+        codeError: activeCodeConflict
+          ? 'An active test with this code already exists.'
+          : archivedCodeConflict
+            ? 'This code matches an archived test that can be restored.'
+            : undefined,
+        testConflicts,
+        nonce: Date.now(),
+      }
+    }
     if (id) await db.update(tests).set(values).where(eq(tests.id, id))
     else await db.insert(tests).values(values)
   } catch (e) {
+    if (databaseCode(e) === '23505') {
+      return { error: 'A test with this code already exists.', codeError: 'A test with this code already exists.', nonce: Date.now() }
+    }
     return dbError(e)
   }
   revalidatePath('/categories')
   revalidatePath('/templates')
   return ok(id ? 'Test updated.' : 'Test added.')
+}
+
+export async function restoreTest(fd: FormData): Promise<CrudState> {
+  await assertPermission('categories')
+  const id = idOf(fd)
+  if (!id) return { error: 'Select a valid test.', nonce: Date.now() }
+
+  let alreadyActive = false
+  try {
+    const [test] = await db.select({ id: tests.id, active: tests.active }).from(tests).where(eq(tests.id, id)).limit(1)
+    if (!test) return { error: 'Test not found.', nonce: Date.now() }
+    alreadyActive = test.active
+    if (!alreadyActive) await db.update(tests).set({ active: true }).where(eq(tests.id, id))
+  } catch (error) {
+    console.error('[catalog] test restore failed', error)
+    return { error: 'Could not restore the test. Please try again.', nonce: Date.now() }
+  }
+
+  revalidatePath('/categories')
+  revalidatePath('/templates')
+  revalidatePath('/orders/new')
+  return {
+    success: alreadyActive ? 'Test is already active.' : 'Test restored to the catalogue.',
+    nonce: Date.now(),
+  }
 }
 
 export async function deleteTest(fd: FormData) {
