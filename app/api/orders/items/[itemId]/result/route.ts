@@ -1,9 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
-import { join } from 'node:path'
-import 'regenerator-runtime/runtime'
-import fontkit from '@pdf-lib/fontkit'
-import { PDFDocument, PageSizes, StandardFonts, rgb, type PDFFont } from 'pdf-lib'
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
@@ -21,185 +15,11 @@ import {
 import { formatDateTime } from '@/lib/format'
 import { can } from '@/lib/permissions'
 import { hasLegacyReportResult, hasStructuredReportResult } from '@/lib/order-result-readiness'
+import { createResultPdf } from '@/lib/result-pdf'
 import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
 import { getStaffContext } from '@/lib/staff'
 
 export const runtime = 'nodejs'
-
-const nodeRequire = createRequire(join(process.cwd(), 'package.json'))
-const sinhalaFontPath = nodeRequire.resolve(
-  '@fontsource/noto-sans-sinhala/files/noto-sans-sinhala-sinhala-400-normal.woff2',
-)
-const tamilFontPath = nodeRequire.resolve(
-  '@fontsource/noto-sans-tamil/files/noto-sans-tamil-tamil-400-normal.woff2',
-)
-
-type PdfTextRun = { text: string; font: PDFFont }
-
-function textRuns(
-  value: string,
-  regular: PDFFont,
-  bold: PDFFont,
-  sinhala: PDFFont,
-  tamil: PDFFont,
-  isBold: boolean,
-) {
-  const runs: PdfTextRun[] = []
-  for (const originalCharacter of Array.from(value.normalize('NFC'))) {
-    let character = originalCharacter
-    let font =
-      /[\u0D80-\u0DFF]/u.test(character) ? sinhala :
-        /[\u0B80-\u0BFF]/u.test(character) ? tamil :
-          isBold ? bold : regular
-    try {
-      font.encodeText(character)
-    } catch {
-      font = isBold ? bold : regular
-      try {
-        font.encodeText(character)
-      } catch {
-        character = '?'
-      }
-    }
-
-    const previous = runs[runs.length - 1]
-    if (previous?.font === font) previous.text += character
-    else runs.push({ text: character, font })
-  }
-  return runs
-}
-
-function runsWidth(runs: PdfTextRun[], size: number) {
-  return runs.reduce((width, run) => width + run.font.widthOfTextAtSize(run.text, size), 0)
-}
-
-function wrapText(
-  text: string,
-  regular: PDFFont,
-  bold: PDFFont,
-  sinhala: PDFFont,
-  tamil: PDFFont,
-  size: number,
-  width: number,
-  isBold: boolean,
-) {
-  const words = text.split(/\s+/)
-  const lines: PdfTextRun[][] = []
-  let line: PdfTextRun[] = []
-  for (const word of words) {
-    const wordRuns = textRuns(word, regular, bold, sinhala, tamil, isBold)
-    const candidate = line.length
-      ? [...line, ...textRuns(' ', regular, bold, sinhala, tamil, isBold), ...wordRuns]
-      : wordRuns
-    if (line.length && runsWidth(candidate, size) > width) {
-      lines.push(line)
-      line = wordRuns
-    } else {
-      line = candidate
-    }
-  }
-  if (line.length || lines.length === 0) lines.push(line)
-  return lines
-}
-
-async function createResultPdf({
-  orderNumber,
-  patientName,
-  patientCode,
-  patientPhone,
-  branchName,
-  partnerLabName,
-  testName,
-  testCode,
-  orderedAt,
-  resultData,
-  resultSavedAt,
-  blankTemplate,
-}: {
-  orderNumber: string
-  patientName: string
-  patientCode: string
-  patientPhone: string | null
-  branchName: string
-  partnerLabName: string | null
-  testName: string
-  testCode: string | null
-  orderedAt: Date
-  resultData: OrderedTestResult
-  resultSavedAt: Date | null
-  blankTemplate: boolean
-}) {
-  const pdf = await PDFDocument.create()
-  pdf.registerFontkit(fontkit)
-  const [sinhalaBytes, tamilBytes] = await Promise.all([
-    readFile(sinhalaFontPath),
-    readFile(tamilFontPath),
-  ])
-  const [sinhala, tamil] = await Promise.all([
-    pdf.embedFont(sinhalaBytes),
-    pdf.embedFont(tamilBytes),
-  ])
-  pdf.setTitle(`Test Result - ${orderNumber} - ${testName}`)
-  pdf.setAuthor('Ashoka Medi-Lab')
-
-  const regular = await pdf.embedFont(StandardFonts.Helvetica)
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  const margin = 48
-  const contentWidth = PageSizes.A4[0] - margin * 2
-  let page = pdf.addPage(PageSizes.A4)
-  let y = PageSizes.A4[1] - margin
-
-  const addText = (value: string, size = 10, isBold = false, gap = 5) => {
-    const lines = wrapText(value, regular, bold, sinhala, tamil, size, contentWidth, isBold)
-    for (const line of lines) {
-      if (y < margin + size + gap) {
-        page = pdf.addPage(PageSizes.A4)
-        y = PageSizes.A4[1] - margin
-      }
-      let x = margin
-      for (const run of line) {
-        page.drawText(run.text, {
-          x,
-          y,
-          size,
-          font: run.font,
-          color: rgb(0.12, 0.16, 0.22),
-        })
-        x += run.font.widthOfTextAtSize(run.text, size)
-      }
-      y -= size + gap
-    }
-  }
-
-  addText('ASHOKA MEDI-LAB', 16, true, 9)
-  addText('TEST RESULT', 12, true, 12)
-  addText(`Order No: ${orderNumber}`)
-  addText(`Patient: ${patientName}`)
-  addText(`Patient ID: ${patientCode}`)
-  addText(`Phone: ${patientPhone || '—'}`)
-  addText(`Branch: ${branchName}`)
-  addText(`Test: ${testName}${testCode ? ` (${testCode})` : ''}`)
-  if (partnerLabName) addText(`Partner lab: ${partnerLabName}`)
-  addText(`Ordered: ${formatDateTime(orderedAt)}`)
-  if (blankTemplate) {
-    addText('Blank template — results not entered.', 10, true, 12)
-  } else if (resultSavedAt) {
-    addText(`Result saved: ${formatDateTime(resultSavedAt)}`, 9, false, 12)
-  }
-  addText('Results', 11, true, 8)
-
-  const columns = new Set(resultData.columns)
-  for (const parameter of resultData.parameters) {
-    if (columns.has('parameter')) addText(parameter.name, 10, true, 3)
-    if (columns.has('result')) addText(`Result: ${parameter.value}`, 10, false, 3)
-    if (columns.has('unit') && parameter.unit) addText(`Unit: ${parameter.unit}`, 9, false, 3)
-    if (columns.has('referenceInterval') && parameter.referenceInterval) {
-      addText(`Reference interval: ${parameter.referenceInterval}`, 9, false, 8)
-    }
-  }
-
-  return pdf.save()
-}
 
 export async function GET(
   request: Request,
@@ -223,6 +43,8 @@ export async function GET(
       patientCode: patients.patientCode,
       patientPhone: patients.phone,
       branchName: branches.name,
+      branchAddress: branches.address,
+      branchPhone: branches.phone,
       partnerId: orderItems.partnerId,
       partnerLabName: labPartners.name,
       testName: orderItems.testName,
@@ -268,16 +90,23 @@ export async function GET(
   }
 
   const blankTemplate = !hasSavedResult
-  const savedValues = new Map(
-    (structuredResult?.parameters ?? []).map((parameter) => [parameter.name.trim().toLowerCase(), parameter.value]),
+  const savedParameters = new Map(
+    (structuredResult?.parameters ?? []).map((parameter) => [
+      parameter.name.trim().toLowerCase(),
+      parameter,
+    ]),
   )
   const resultData: OrderedTestResult = structuredResult && configuration
     ? {
         columns: configuration.columns,
-        parameters: configuration.parameters.map((parameter) => ({
-          ...parameter,
-          value: savedValues.get(parameter.name.trim().toLowerCase()) ?? '',
-        })),
+        parameters: configuration.parameters.map((parameter) => {
+          const saved = savedParameters.get(parameter.name.trim().toLowerCase())
+          return {
+            ...parameter,
+            value: saved?.value ?? '',
+            ...(saved?.flag === undefined ? {} : { flag: saved.flag }),
+          }
+        }),
       }
     : structuredResult
       ? structuredResult
@@ -304,12 +133,14 @@ export async function GET(
     patientCode: item.patientCode,
     patientPhone: item.patientPhone,
     branchName: item.branchName,
+    branchAddress: item.branchAddress,
+    branchPhone: item.branchPhone,
     partnerLabName: item.partnerId ? item.partnerLabName ?? 'Outsourced' : null,
     testName: item.testName,
     testCode: item.testCode,
-    orderedAt: item.orderedAt,
+    orderedAt: formatDateTime(item.orderedAt),
     resultData,
-    resultSavedAt: item.resultSavedAt,
+    resultSavedAt: item.resultSavedAt ? formatDateTime(item.resultSavedAt) : null,
     blankTemplate,
   })
   const fileOrderNumber = item.orderNumber.replace(/[^A-Za-z0-9._-]/g, '_')

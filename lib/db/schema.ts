@@ -259,6 +259,7 @@ export type OrderedTestResult = {
     value: string
     unit: string
     referenceInterval: string
+    flag?: string
   }[]
 }
 
