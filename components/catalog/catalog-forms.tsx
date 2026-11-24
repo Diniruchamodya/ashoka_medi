@@ -49,7 +49,7 @@ export function TestForm({
     code: string
     price: string
     sampleType: string | null
-    aliases: string[]
+    aliases?: string[] | null
     turnaroundHours: number
     categoryId: number | null
     partnerId: number | null
@@ -80,7 +80,7 @@ export function TestForm({
             id={uid('aliases')}
             name="aliases"
             placeholder="Comma-separated"
-            defaultValue={test?.aliases.join(', ') ?? ''}
+            defaultValue={test?.aliases?.join(', ') ?? ''}
           />
         </Field>
         <Field label="Turnaround (hours)" htmlFor={uid('tat')}>
