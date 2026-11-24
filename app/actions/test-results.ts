@@ -14,6 +14,7 @@ import {
 } from '@/lib/db/schema'
 import { assertPermission } from '@/lib/staff'
 import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
+import { canRecordOrderItemResult, hasReadyReport } from '@/lib/order-result-readiness'
 
 export type TestResultActionState = {
   error?: string
@@ -21,7 +22,6 @@ export type TestResultActionState = {
 } | undefined
 
 const DEFAULT_COLUMNS = ['parameter', 'result', 'unit', 'referenceInterval']
-const RESULT_ENTRY_STATUSES = ['sample_collected', 'processing']
 
 export async function saveOrderItemResult(
   formData: FormData,
@@ -40,12 +40,15 @@ export async function saveOrderItemResult(
       testCode: tests.code,
       status: orderItems.status,
       orderStatus: orders.status,
+      legacyResult: orderItems.result,
+      resultData: orderItemResults.resultData,
       defaultHidden: reportTemplateVisibility.hidden,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .leftJoin(tests, eq(tests.id, orderItems.testId))
     .leftJoin(reportTemplateVisibility, eq(reportTemplateVisibility.testId, orderItems.testId))
+    .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
     .where(and(
       eq(orderItems.id, itemId),
       inArray(orders.branchId, staff.branches.map((branch) => branch.id)),
@@ -55,8 +58,12 @@ export async function saveOrderItemResult(
   if (!item || item.orderStatus === 'cancelled') {
     return { error: 'This ordered test is unavailable.' }
   }
-  if (!RESULT_ENTRY_STATUSES.includes(item.status)) {
-    return { error: 'Results can only be entered after sample collection and before completion.' }
+  if (!canRecordOrderItemResult(
+    item.status,
+    item.orderStatus,
+    hasReadyReport(item.status, item.legacyResult, item.resultData),
+  )) {
+    return { error: 'Results can only be recorded on collected, processing, or completed tests without a saved result.' }
   }
 
   const [template] = await db

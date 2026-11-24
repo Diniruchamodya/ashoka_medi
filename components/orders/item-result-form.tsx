@@ -23,11 +23,13 @@ export function ItemResultForm({
   testName,
   configuration,
   savedResult,
+  buttonLabel = 'Enter Results',
 }: {
   itemId: number
   testName: string
   configuration: ReportTemplateConfiguration | null
   savedResult: OrderedTestResult | null
+  buttonLabel?: string
 }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,11 +68,11 @@ export function ItemResultForm({
     >
       <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
         <FilePenLine aria-hidden />
-        Enter Results
+        {buttonLabel}
       </Button>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Enter results</DialogTitle>
+          <DialogTitle>{buttonLabel === 'Record Result' ? 'Record result' : 'Enter results'}</DialogTitle>
           <DialogDescription>
             Save results for {testName}. They will remain attached to this ordered test.
           </DialogDescription>

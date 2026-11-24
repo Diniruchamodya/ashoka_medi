@@ -25,3 +25,13 @@ export function hasReadyReport(
 ) {
   return hasStructuredReportResult(resultData) || hasLegacyReportResult(status, legacyResult)
 }
+
+export function canRecordOrderItemResult(
+  itemStatus: string,
+  orderStatus: string,
+  hasSavedResult: boolean,
+) {
+  if (orderStatus === 'cancelled') return false
+  if (itemStatus === 'sample_collected' || itemStatus === 'processing') return true
+  return itemStatus === 'completed' && !hasSavedResult
+}

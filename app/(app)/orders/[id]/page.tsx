@@ -3,13 +3,29 @@ import { notFound } from 'next/navigation'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Metadata } from 'next'
 import { db } from '@/lib/db'
-import { branches, doctors, labPartners, orderItems, orders, patients, payments, user } from '@/lib/db/schema'
+import {
+  branches,
+  doctors,
+  labPartners,
+  orderItemResults,
+  orderItems,
+  orders,
+  patients,
+  payments,
+  reportTemplates,
+  reportTemplateVisibility,
+  tests,
+  user,
+} from '@/lib/db/schema'
 import { requirePermission } from '@/lib/staff'
 import { can, PAYMENT_METHOD_LABELS } from '@/lib/permissions'
 import { ageFrom, formatDateTime, formatLKR } from '@/lib/format'
 import { Panel, StatusBadge, paymentStatus } from '@/components/lab/page-parts'
 import { PaymentForm } from '@/components/orders/payment-form'
 import { OrderActions } from '@/components/orders/order-actions'
+import { ItemResultForm } from '@/components/orders/item-result-form'
+import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
+import { canRecordOrderItemResult, hasReadyReport } from '@/lib/order-result-readiness'
 
 export const metadata: Metadata = { title: 'Order Details' }
 
@@ -39,14 +55,22 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       .select({
         id: orderItems.id,
         testName: orderItems.testName,
+        testCode: tests.code,
         price: orderItems.price,
         status: orderItems.status,
         result: orderItems.result,
+        resultData: orderItemResults.resultData,
+        reportConfiguration: reportTemplates.configuration,
+        defaultTemplateHidden: reportTemplateVisibility.hidden,
         partnerName: labPartners.name,
         completedAt: orderItems.completedAt,
       })
       .from(orderItems)
       .leftJoin(labPartners, eq(labPartners.id, orderItems.partnerId))
+      .leftJoin(tests, eq(tests.id, orderItems.testId))
+      .leftJoin(orderItemResults, eq(orderItemResults.orderItemId, orderItems.id))
+      .leftJoin(reportTemplates, eq(reportTemplates.testId, orderItems.testId))
+      .leftJoin(reportTemplateVisibility, eq(reportTemplateVisibility.testId, orderItems.testId))
       .where(eq(orderItems.orderId, id))
       .orderBy(asc(orderItems.id)),
     db
@@ -68,6 +92,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const paid = Number(o.paidAmount)
   const balance = Math.max(total - paid, 0)
   const age = ageFrom(order.patient.dateOfBirth)
+  const canRecordResults = can(staff.profile.role, 'labqueue')
 
   return (
     <>
@@ -140,6 +165,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     <th className="pb-2 font-medium">Status</th>
                     <th className="pb-2 font-medium">Result</th>
                     <th className="pb-2 text-right font-medium">Price</th>
+                    {canRecordResults && <th className="pb-2 text-right font-medium">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -156,6 +182,28 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                       </td>
                       <td className="py-2.5 pr-3 text-muted-foreground">{item.result ?? '—'}</td>
                       <td className="py-2.5 text-right tabular-nums">{formatLKR(item.price)}</td>
+                      {canRecordResults && (
+                        <td className="py-2.5 pl-3 text-right">
+                          {canRecordOrderItemResult(
+                            item.status,
+                            o.status,
+                            hasReadyReport(item.status, item.result, item.resultData),
+                          ) && (
+                            <ItemResultForm
+                              itemId={item.id}
+                              testName={item.testName}
+                              configuration={
+                                item.reportConfiguration ??
+                                (!item.defaultTemplateHidden
+                                  ? SYSTEM_REPORT_TEMPLATES[item.testCode ?? ''] ?? null
+                                  : null)
+                              }
+                              savedResult={item.resultData}
+                              buttonLabel="Record Result"
+                            />
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
