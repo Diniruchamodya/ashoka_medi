@@ -350,7 +350,7 @@ export function TemplateForm({
   return (
     <CrudForm
       action={saveTemplate}
-      submitLabel={template ? 'Save' : 'Create template'}
+      submitLabel={template ? 'Save' : 'Create package'}
       resetOnSuccess={!template}
       onSuccess={() => {
         if (!template) setSelected([])
@@ -361,25 +361,44 @@ export function TemplateForm({
       {selected.map((id) => (
         <input key={id} type="hidden" name="testIds" value={id} />
       ))}
-      <Field label="Template name" htmlFor={uid('name')}>
-        <Input id={uid('name')} name="name" required placeholder="e.g. Full Body Checkup" defaultValue={template?.name} />
+      <Field label="Package name" htmlFor={uid('name')}>
+        <Input
+          id={uid('name')}
+          name="name"
+          required
+          placeholder="e.g. Full Body Checkup"
+          defaultValue={template?.name}
+          className="h-10 rounded-xl"
+        />
       </Field>
       <Field label="Description" htmlFor={uid('desc')}>
-        <Input id={uid('desc')} name="description" defaultValue={template?.description ?? ''} />
+        <Input
+          id={uid('desc')}
+          name="description"
+          placeholder="Optional details about this package"
+          defaultValue={template?.description ?? ''}
+          className="h-10 rounded-xl"
+        />
       </Field>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1.5 text-sm font-medium">
           Tests ({selected.length}) · {formatLKR(total)}
         </legend>
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter tests" aria-label="Filter tests" />
-        <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-lg border border-border p-1">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter tests by name or code"
+          aria-label="Filter tests"
+          className="h-10 rounded-xl"
+        />
+        <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto rounded-xl border border-border bg-background p-1.5">
           {visible.map((t) => {
             const checked = selected.includes(t.id)
             return (
               <li key={t.id}>
                 <label
                   className={cn(
-                    'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+                    'flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors hover:bg-muted',
                     checked && 'bg-accent',
                   )}
                 >
@@ -391,12 +410,15 @@ export function TemplateForm({
                     }
                     className="size-4 accent-[var(--primary)]"
                   />
-                  <span className="flex-1">{t.name}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">{formatLKR(t.price)}</span>
+                  <span className="min-w-0 flex-1 leading-5">{t.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatLKR(t.price)}</span>
                 </label>
               </li>
             )
           })}
+          {visible.length === 0 && (
+            <li className="px-3 py-6 text-center text-sm text-muted-foreground">No tests match this filter.</li>
+          )}
         </ul>
       </fieldset>
     </CrudForm>

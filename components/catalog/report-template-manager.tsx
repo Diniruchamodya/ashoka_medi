@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/table'
 import type { ReportTemplateConfiguration, ReportTemplateParameter } from '@/lib/db/schema'
 import { formatLKR } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 type ReportTemplateRowData = {
   id: number
@@ -82,7 +83,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
     })
     const grouped = new Map<string, ReportTemplateRowData[]>()
     for (const row of filtered) {
-      const category = row.categoryName ?? 'Uncategorised'
+      const category = row.categoryName || 'Uncategorised'
       const categoryRows = grouped.get(category) ?? []
       categoryRows.push(row)
       grouped.set(category, categoryRows)
@@ -97,7 +98,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
 
   return (
     <>
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight text-balance">Report Templates</h1>
           <p className="text-sm text-muted-foreground">
@@ -106,6 +107,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
         </div>
         <Button
           type="button"
+          size="lg"
           className="w-full shrink-0 sm:w-auto"
           onClick={() => setNewTemplateOpen(true)}
         >
@@ -113,68 +115,69 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
           New Template
         </Button>
       </header>
-      <nav aria-label="Template sections" className="flex w-fit gap-1 rounded-lg border border-border bg-muted/40 p-1">
-        <Link
-          href="/templates"
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-        >
-          Order Packages
-        </Link>
+      <nav
+        aria-label="Template sections"
+        className="flex w-fit max-w-full gap-1 rounded-xl border border-border bg-muted/40 p-1"
+      >
         <Link
           href="/templates?tab=reports"
           aria-current="page"
-          className="rounded-md bg-background px-3 py-1.5 text-sm font-medium shadow-sm"
+          className="rounded-lg bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm"
         >
           Report Templates
         </Link>
+        <Link
+          href="/templates"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Order Packages
+        </Link>
       </nav>
-      <>
-        {!hasDefaults && (
-          <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground" role="status">
-            No lab-approved system defaults are configured. Tests without a custom template are shown as Unconfigured.
-          </p>
-        )}
-        <div className="relative w-full max-w-md">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search templates by name, short name, sample or category ..."
-            aria-label="Search report templates"
-            className="pl-8"
-          />
-        </div>
-        {rows.length === 0 ? (
-          <EmptyState>No tests are available to configure.</EmptyState>
-        ) : groups.length === 0 ? (
-          <EmptyState>No tests match this search.</EmptyState>
-        ) : (
-          <Table className="min-w-[1060px] table-fixed text-xs">
-            <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="w-[110px] px-3 py-2 text-[10px] uppercase tracking-wide">Code</TableHead>
-                <TableHead className="w-[34%] min-w-[320px] px-3 py-2 text-[10px] uppercase tracking-wide">Test Name</TableHead>
-                <TableHead className="w-[140px] px-3 py-2 text-[10px] uppercase tracking-wide">Sample</TableHead>
-                <TableHead className="w-[110px] px-3 py-2 text-right text-[10px] uppercase tracking-wide">Price</TableHead>
-                <TableHead className="w-[95px] px-3 py-2 text-right text-[10px] uppercase tracking-wide">Margin</TableHead>
-                <TableHead className="w-[125px] px-3 py-2 text-[10px] uppercase tracking-wide">Outsource</TableHead>
-                <TableHead className="w-[120px] px-3 py-2 text-[10px] uppercase tracking-wide">Active</TableHead>
-                <TableHead className="w-[220px] px-3 py-2 text-right text-[10px] uppercase tracking-wide">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {groups.map((group) => (
-                <Fragment key={group.category}>
+      {!hasDefaults && (
+        <p className="rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground" role="status">
+          No lab-approved system defaults are configured. Tests without a custom template are shown as Unconfigured.
+        </p>
+      )}
+      <div className="relative w-full max-w-md">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by test name, code, sample or category…"
+          aria-label="Search report templates"
+          className="h-10 rounded-xl pl-9"
+        />
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState>No tests are available to configure.</EmptyState>
+      ) : groups.length === 0 ? (
+        <EmptyState>No tests match this search.</EmptyState>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-6">
+          {groups.map((group) => (
+            <section key={group.category} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+              <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-3">
+                <span className="size-2 rounded-full bg-primary" aria-hidden />
+                <h2 className="text-sm font-semibold tracking-wide">{group.category}</h2>
+              </div>
+              <Table className="min-w-[1120px] table-fixed text-sm">
+                <TableHeader>
                   <TableRow className="bg-muted/20 hover:bg-muted/20">
-                    <TableCell colSpan={8} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      <span className="mr-2 inline-block size-2 rounded-full bg-primary align-middle" aria-hidden />
-                      {group.category}
-                    </TableCell>
+                    <TableHead className="w-[105px] px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Code</TableHead>
+                    <TableHead className="w-[38%] min-w-[360px] px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Test Name</TableHead>
+                    <TableHead className="w-[150px] px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Sample</TableHead>
+                    <TableHead className="w-[125px] px-4 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Price</TableHead>
+                    <TableHead className="w-[105px] px-4 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Margin</TableHead>
+                    <TableHead className="w-[145px] px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Outsource</TableHead>
+                    <TableHead className="w-[120px] px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Active</TableHead>
+                    <TableHead className="w-[220px] px-4 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Actions</TableHead>
                   </TableRow>
+                </TableHeader>
+                <TableBody>
                   {group.rows.map((row) => {
                     const hasDefault = row.defaultConfiguration !== null
                     const hasCustom = row.customConfiguration !== null
@@ -191,35 +194,45 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                     return (
                       <Fragment key={row.id}>
                         <TableRow className="align-middle">
-                          <TableCell className="px-3 py-2">
-                            <Badge variant="outline" className="whitespace-nowrap px-1.5 py-0 font-mono text-[10px]">
+                          <TableCell className="px-4 py-3">
+                            <Badge variant="outline" className="whitespace-nowrap border-primary/20 bg-primary/5 px-2 font-mono text-xs font-medium text-primary">
                               {row.code}
                             </Badge>
                           </TableCell>
-                          <TableCell className="min-w-[320px] whitespace-normal px-3 py-2">
-                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className="min-w-0 break-words font-medium leading-4">{row.name}</span>
-                              {usingDefault && <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">System default</Badge>}
-                              {hasCustom && <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">Custom</Badge>}
-                              {!hasDefault && !hasCustom && <Badge variant="ghost" className="shrink-0 px-1.5 py-0 text-[10px]">Unconfigured</Badge>}
+                          <TableCell className="min-w-[360px] whitespace-normal px-4 py-3">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+                              <span className="min-w-0 break-words font-medium leading-5">{row.name}</span>
+                              {hasDefault && (
+                                <Badge variant="secondary" className="shrink-0 px-2 text-[10px] font-medium">
+                                  System default
+                                </Badge>
+                              )}
                             </div>
                           </TableCell>
-                          <TableCell className="whitespace-normal px-3 py-2">{row.sampleType || '—'}</TableCell>
-                          <TableCell className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatLKR(row.price)}</TableCell>
-                          <TableCell className="px-3 py-2 text-right tabular-nums">—</TableCell>
-                          <TableCell className="whitespace-normal px-3 py-2">
+                          <TableCell className="whitespace-normal px-4 py-3 text-muted-foreground">{row.sampleType || '—'}</TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums">{formatLKR(row.price)}</TableCell>
+                          <TableCell className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</TableCell>
+                          <TableCell className="whitespace-normal px-4 py-3 text-muted-foreground">
                             {row.partnerName ?? (row.partnerId ? 'Outsourced' : 'In-house')}
                           </TableCell>
-                          <TableCell className="px-3 py-2">
-                            <Badge variant={state === 'Active' ? 'secondary' : 'outline'} className="px-1.5 py-0 text-[10px]">
+                          <TableCell className="px-4 py-3">
+                            <Badge
+                              variant={state === 'Active' ? 'secondary' : 'outline'}
+                              className={cn(
+                                'px-2 text-xs font-medium',
+                                state === 'Active' && 'bg-success/10 text-success',
+                                state === 'Inactive' && 'text-muted-foreground',
+                                state === 'Hidden' && 'border-warning/30 bg-warning/10 text-foreground',
+                              )}
+                            >
                               {state}
                             </Badge>
                           </TableCell>
-                          <TableCell className="px-3 py-2">
-                            <div className="flex min-w-[200px] flex-nowrap items-center justify-end gap-1">
+                          <TableCell className="px-4 py-3">
+                            <div className="flex min-w-[200px] flex-nowrap items-center justify-end gap-1.5">
                               {hasCustom ? (
                                 <>
-                                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingTestId(row.id)}>
+                                  <Button type="button" variant="outline" size="sm" className="h-8 px-3" onClick={() => setEditingTestId(row.id)}>
                                     Edit
                                   </Button>
                                   <DeleteReportTemplateButton
@@ -230,7 +243,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                                 </>
                               ) : usingDefault ? (
                                 <>
-                                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingTestId(row.id)}>
+                                  <Button type="button" variant="outline" size="sm" className="h-8 px-3" onClick={() => setEditingTestId(row.id)}>
                                     Customise
                                   </Button>
                                   <SystemTemplateVisibilityButton testId={row.id} hidden={false} />
@@ -238,7 +251,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                               ) : hasDefault ? (
                                 <SystemTemplateVisibilityButton testId={row.id} hidden />
                               ) : (
-                                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingTestId(row.id)}>
+                                <Button type="button" variant="outline" size="sm" className="h-8 px-3" onClick={() => setEditingTestId(row.id)}>
                                   Configure
                                 </Button>
                               )}
@@ -247,7 +260,7 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                         </TableRow>
                         {editingTestId === row.id && (
                           <TableRow>
-                            <TableCell colSpan={8} className="whitespace-normal px-3 py-3">
+                            <TableCell colSpan={8} className="whitespace-normal bg-muted/10 px-4 py-4">
                               <ReportTemplateEditor
                                 key={`${row.id}-${hasCustom ? 'custom' : 'new'}`}
                                 testId={row.id}
@@ -262,14 +275,14 @@ export function ReportTemplateManager({ rows }: { rows: ReportTemplateRowData[] 
                       </Fragment>
                     )
                   })}
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </>
+                </TableBody>
+              </Table>
+            </section>
+          ))}
+        </div>
+      )}
       <Dialog open={newTemplateOpen} onOpenChange={setNewTemplateOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-2xl p-6 sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>New report template</DialogTitle>
             <DialogDescription>
@@ -351,7 +364,7 @@ function ReportTemplateEditor({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4">
+    <form action={formAction} className="flex flex-col gap-5 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
       {testId === null ? (
         <>
           {createOnly && <input type="hidden" name="createOnly" value="true" />}
@@ -377,7 +390,7 @@ function ReportTemplateEditor({
         <input type="hidden" name="testId" value={testId} />
       )}
       <div>
-        <h3 className="font-semibold">
+        <h3 className="font-semibold tracking-tight">
           {isCustom ? 'Edit custom report template' : 'Configure report template'}
           {selectedTestName && ` · ${selectedTestName}`}
         </h3>
@@ -387,7 +400,7 @@ function ReportTemplateEditor({
           </p>
         )}
       </div>
-      <fieldset className="flex flex-col gap-2">
+      <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium">Result parameters</legend>
         {parameters.map((parameter, index) => (
           <div key={index} className="grid gap-2 sm:grid-cols-[1fr_0.7fr_1fr_auto]">
@@ -479,7 +492,13 @@ function SystemTemplateVisibilityButton({ testId, hidden }: { testId: number; hi
       <form action={formAction}>
         <input type="hidden" name="testId" value={testId} />
         <input type="hidden" name="hidden" value={String(!hidden)} />
-        <Button type="submit" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={pending}>
+        <Button
+          type="submit"
+          variant="outline"
+          size="sm"
+          className="h-8 px-3"
+          disabled={pending}
+        >
           {pending && <Loader2 className="animate-spin" aria-hidden />}
           {hidden ? 'Show' : 'Hide'}
         </Button>
@@ -520,7 +539,13 @@ function DeleteReportTemplateButton({
         }}
       >
         <input type="hidden" name="testId" value={testId} />
-        <Button type="submit" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={pending}>
+        <Button
+          type="submit"
+          variant="outline"
+          size="sm"
+          className="h-8 border-destructive/30 px-3 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          disabled={pending}
+        >
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 aria-hidden />}
           Delete
         </Button>

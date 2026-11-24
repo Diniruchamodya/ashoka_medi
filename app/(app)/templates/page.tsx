@@ -12,13 +12,12 @@ import {
 } from '@/lib/db/schema'
 import { requirePermission } from '@/lib/staff'
 import { formatLKR } from '@/lib/format'
-import { EmptyState, PageHeader, Panel } from '@/components/lab/page-parts'
+import { EmptyState, Panel } from '@/components/lab/page-parts'
 import { TemplateForm } from '@/components/catalog/catalog-forms'
 import { DeleteButton, EditToggle } from '@/components/lab/crud-form'
 import { deleteTemplate } from '@/app/actions/catalog'
 import { ReportTemplateManager } from '@/components/catalog/report-template-manager'
 import { SYSTEM_REPORT_TEMPLATES } from '@/lib/report-template-defaults'
-import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Templates' }
 
@@ -35,24 +34,30 @@ export default async function TemplatesPage({
 
   return (
     <>
-      <PageHeader title="Templates" description="Manage order packages and test report templates." />
-      <nav aria-label="Template sections" className="flex w-fit gap-1 rounded-lg border border-border bg-muted/40 p-1">
-        <Link
-          href="/templates"
-          aria-current={activeTab === 'orders' ? 'page' : undefined}
-          className={cn(
-            'rounded-md px-3 py-1.5 text-sm font-medium',
-            activeTab === 'orders' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          Order Packages
-        </Link>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-balance">Order Packages</h1>
+          <p className="text-sm text-muted-foreground">
+            Build reusable test packages for faster order entry.
+          </p>
+        </div>
+      </header>
+      <nav
+        aria-label="Template sections"
+        className="flex w-fit max-w-full gap-1 rounded-xl border border-border bg-muted/40 p-1"
+      >
         <Link
           href="/templates?tab=reports"
-          aria-current={undefined}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           Report Templates
+        </Link>
+        <Link
+          href="/templates"
+          aria-current="page"
+          className="rounded-lg bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm"
+        >
+          Order Packages
         </Link>
       </nav>
       <OrderPackages />
@@ -73,7 +78,7 @@ async function OrderPackages() {
   const byId = new Map(testList.map((test) => [test.id, test]))
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="flex min-w-0 flex-col gap-4">
         {templates.length === 0 && <EmptyState>No templates yet.</EmptyState>}
         {templates.map((template) => {
@@ -110,7 +115,7 @@ async function OrderPackages() {
           )
         })}
       </div>
-      <Panel title="New template" className="lg:sticky lg:top-36 lg:self-start">
+      <Panel title="New Order Package" className="lg:sticky lg:top-36 lg:self-start">
         <TemplateForm tests={testList} />
       </Panel>
     </div>
